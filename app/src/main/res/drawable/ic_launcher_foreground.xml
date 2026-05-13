@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Stylized 'A' for Aiworks -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34,73 L54,28 L74,73 L66,73 L54,47 L42,73 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M46,63 H62 V58 H46 Z" />
+    <!-- AI Spark/Star -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M78,21 L80,27 L86,29 L80,31 L78,37 L76,31 L70,29 L76,27 Z" />
+</vector>

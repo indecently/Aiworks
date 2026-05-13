@@ -1,0 +1,4 @@
+<resources>
+
+    <style name="Theme.LocalGemmaChat" parent="Theme.MaterialComponents.Light" />
+</resources>
