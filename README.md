@@ -1,44 +1,55 @@
-# LocalGemmaChat
+AIworks v0.7.0.1
+Because your data deserves better than being Big Tech’s side chick.
+Introduction: Why This Damn Thing Exists
+AIworks was built for one glorious reason: to give you a genuinely powerful, 100% offline AI that doesn’t phone home, sell your soul, or treat your privacy like an optional DLC.
 
-LocalGemmaChat is a streamlined, privacy-focused Android application designed to provide a fully offline AI chat experience. By leveraging Google's Gemma model and the LiteRT-LM runtime, the app enables high-quality text generation directly on your device without requiring an internet connection.
+This isn’t some polished corporate product from a 200-person engineering team. Nah. This is a regular dude rage-building in Android Studio with an army of AI agents because the current options are either expensive, creepy, or both. Every update is me learning on the fly and still somehow shipping something that feels premium as hell. You’re welcome.
 
-## Features
-*   **On-Device AI Chat:** 100% offline processing for maximum privacy.
-*   **Streaming Responses:** Real-time text generation for a responsive feel.
-*   **Vibrant Material 3 Design:** Beautiful, energetic UI with full edge-to-edge display and expressive motion.
-*   **Adaptive Layout:** Seamlessly scales from mobile phones to tablets and foldables.
-*   **Customizable Inference:** Adjust Temperature and Max Tokens to fine-tune AI behavior.
+v0.7.0.1: I Cooked ts.
+This release is all about making the app feel buttery while we quietly make the internals actually good.
 
-## Setup Instructions
+Performance Gains (aka we stopped sucking):
 
-### 1. Download the Gemma Model
-To use this app, you need a compatible `.litertlm` or `.bin` model file.
-*   Download the **Gemma 4 E2B IT** model from [Google AI Edge](https://huggingface.co/google/gemma-4-e2b-it-litertlm).
-*   Transfer the file to your Android device's storage.
+Faster responses: Killed the brain-dead loop that kept resetting the engine like a drama queen. The AI now starts yapping almost immediately.
 
-### 2. Configure the App
-1.  Open LocalGemmaChat.
-2.  Navigate to **Settings** (icon in the top right).
-3.  Use the **Model Path** picker to select the downloaded model file.
-4.  Tap **Load / Reload Model**.
-5.  Wait for the status to change to "Gemma Ready".
+Smarter memory: Implemented proper caching for your personal context so we’re not rebuilding Rome every single message.
 
-### 3. Start Chatting
-Go back to the **Welcome** or **Chat** screen and start asking questions!
+UI smoothness: Fixed the jank. Scrolling and tapping now feel like 60FPS silk instead of a PowerPoint presentation from 2007.
 
-## Building the Project
-*   Open the project in **Android Studio Ladybug (2024.2.1)** or newer.
-*   Ensure you have **JDK 21** installed and configured in Gradle settings.
-*   Sync the project with Gradle files.
-*   Run the `:app` module on an Android 12+ device (API 31+) for the best experience.
+Bug Fixes (we touched grass):
 
-## Performance Notes
-*   **GPU Acceleration:** The app is configured to use GPU acceleration via OpenCL. This provides a significant speedup on compatible devices.
-*   **Memory Usage:** LLM inference is memory-intensive. For best results, use a device with at least 8GB of RAM.
-*   **First Run:** The first message after loading a model might take a few extra seconds as the engine initializes the KV cache.
+Ghost chats exorcised: No more phantom dead screens haunting you after using the Digital Assistant.
 
-## Privacy
-Your conversations are never uploaded to any server. All processing happens locally on your device.
+Back button actually works: It now closes menus like a civilized human instead of rage-quitting the entire app.
 
----
-Built with Jetpack Compose, Navigation 3, and LiteRT-LM.
+Visual glow-up: Menu buttons upgraded to proper 56dp chads and perfectly aligned. Yes, we care about pixels.
+
+Settings moved: “Reset Onboarding” now lives in About Me where it belongs, and it actually does the thing when you smash it.
+
+Core Features (The Stuff That Actually Slaps)
+1. 100% Offline AI
+
+Running Gemma 4 E2B locally with native audio understanding.
+
+No internet. No tracking. No “please wait while we consult the mothership.” Just raw, private intelligence in your pocket.
+
+2. Long-Term Memory (LTM)
+
+We run a background summarization demon that distills your conversation history so the AI actually remembers who you are without having a stroke after 20 messages.
+
+You stay in full control—view it, edit it, delete it, or tell it to forget that one weird phase you went through.
+
+3. Privacy Weapons
+
+Incognito Mode: Burn-after-reading chats that don’t touch your long-term memory. For when you need to be unhinged.
+
+Secure Assistant: Summon the AI from anywhere (yes, even on the lock screen) without exposing the rest of your digital life.
+
+Project Status
+Built in: Android Studio on Windows.
+
+By: A guy who definitely wasn’t a professional Android dev when this started.
+
+Engine: LiteRT (TensorFlow Lite).
+
+Current vibe: Shipping fast, breaking things responsibly, and making the most private mobile AI experience on the planet.

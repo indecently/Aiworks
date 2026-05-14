@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.birkneo.Aiworks.BuildConfig
 import com.birkneo.Aiworks.ai.ModelStatus
 import com.birkneo.Aiworks.di.GemmaContainer
 import com.birkneo.Aiworks.ui.chat.ChatViewModel
@@ -93,15 +94,6 @@ fun SettingsScreen(
                 title = "Security & Privacy"
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    TextButton(
-                        onClick = { scope.launch { settingsManager.setOnboardingCompleted(false) } },
-                        modifier = Modifier.align(Alignment.End)
-                    ) {
-                        Icon(AppIcons.Reset, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Reset Onboarding Flow")
-                    }
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -290,7 +282,28 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(text = "Version", style = MaterialTheme.typography.bodySmall)
-                        Text(text = "0.7-beta (Aiworks Integration)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        Text(text = "${BuildConfig.VERSION_NAME} (Tinbucktwo)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Button(
+                        onClick = { 
+                            scope.launch { 
+                                settingsManager.setOnboardingCompleted(false)
+                                // Clear model path to ensure it goes back to onboarding
+                                settingsManager.setModelPath("")
+                                // Optionally clear lock settings as well for a clean start
+                                settingsManager.setAppLockEnabled(false)
+                            } 
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)
+                    ) {
+                        Icon(AppIcons.Reset, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Reset App & Onboarding")
                     }
                 }
             }

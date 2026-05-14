@@ -14,7 +14,7 @@ android {
         minSdk = 35
         targetSdk = 37
         versionCode = 7
-        versionName = "0.7-beta"
+        versionName = "0.7.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -40,6 +40,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 

@@ -1,10 +1,8 @@
 package com.birkneo.Aiworks.ui.isolates
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -15,11 +13,15 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -38,6 +40,7 @@ import com.birkneo.Aiworks.ui.theme.AppIcons
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -57,6 +60,15 @@ fun IsolatesScreen(
     var isFabExpanded by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     
+    // Selection Mode State
+    var isSelectionMode by remember { mutableStateOf(false) }
+    val selectedSessionIds = remember { mutableStateListOf<String>() }
+
+    BackHandler(enabled = isSelectionMode) {
+        isSelectionMode = false
+        selectedSessionIds.clear()
+    }
+
     val favoriteSessions = remember(sessions) {
         sessions.filter { it.isFavorite }.sortedByDescending { it.timestamp }.take(4)
     }
@@ -80,80 +92,117 @@ fun IsolatesScreen(
 
     Scaffold(
         topBar = {
-            Column {
-                TopAppBar(
-                    title = { Text("Home", fontWeight = FontWeight.ExtraBold) },
-                    actions = {
-                        IconButton(onClick = onNavigateToSettings) {
-                            Icon(AppIcons.Settings, contentDescription = "Settings")
+            if (isSelectionMode) {
+                CenterAlignedTopAppBar(
+                    title = { 
+                        Text(
+                            "${selectedSessionIds.size} Selected", 
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium
+                        ) 
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { 
+                            isSelectionMode = false
+                            selectedSessionIds.clear()
+                        }) {
+                            Icon(Icons.Rounded.Close, contentDescription = "Cancel")
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.background,
-                        titleContentColor = MaterialTheme.colorScheme.onBackground,
-                        actionIconContentColor = MaterialTheme.colorScheme.onBackground
+                    actions = {
+                        if (selectedSessionIds.isNotEmpty()) {
+                            IconButton(onClick = {
+                                scope.launch {
+                                    val toDelete = sessions.filter { it.id in selectedSessionIds }
+                                    toDelete.forEach { viewModel.deleteSession(it) }
+                                    isSelectionMode = false
+                                    selectedSessionIds.clear()
+                                }
+                            }) {
+                                Icon(Icons.Rounded.Delete, contentDescription = "Delete Selected", tint = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    },
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surface
                     )
                 )
-                
-                // Search Bar
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = searchQuery,
-                        onValueChange = { searchQuery = it },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("Search...") },
-                        leadingIcon = { Icon(AppIcons.Search, contentDescription = null) },
-                        trailingIcon = {
-                            if (searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { searchQuery = "" }) {
-                                    Icon(AppIcons.Close, contentDescription = "Clear")
-                                }
+            } else {
+                Column {
+                    TopAppBar(
+                        title = { Text("Home", fontWeight = FontWeight.ExtraBold) },
+                        actions = {
+                            IconButton(onClick = onNavigateToSettings) {
+                                Icon(AppIcons.Settings, contentDescription = "Settings")
                             }
                         },
-                        shape = RoundedCornerShape(28.dp),
-                        singleLine = true,
-                        colors = TextFieldDefaults.colors(
-                            focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                            focusedIndicatorColor = Color.Transparent,
-                            unfocusedIndicatorColor = Color.Transparent
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.background,
+                            titleContentColor = MaterialTheme.colorScheme.onBackground,
+                            actionIconContentColor = MaterialTheme.colorScheme.onBackground
                         )
                     )
                     
-                    Spacer(modifier = Modifier.width(8.dp))
-                    
-                    Box {
-                        FilterChip(
-                            selected = true,
-                            onClick = { showSortMenu = true },
-                            label = { 
-                                Text(
-                                    when(sortOrder) {
-                                        SessionSortOrder.DATE_NEWEST -> "Newest"
-                                        SessionSortOrder.DATE_OLDEST -> "Oldest"
-                                        SessionSortOrder.NAME -> "A-Z"
-                                        SessionSortOrder.FAVORITES -> "Favorites"
+                    // Search Bar
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            modifier = Modifier.weight(1f),
+                            placeholder = { Text("Search...") },
+                            leadingIcon = { Icon(AppIcons.Search, contentDescription = null) },
+                            trailingIcon = {
+                                if (searchQuery.isNotEmpty()) {
+                                    IconButton(onClick = { searchQuery = "" }) {
+                                        Icon(AppIcons.Close, contentDescription = "Clear")
                                     }
-                                )
+                                }
                             },
-                            trailingIcon = { Icon(AppIcons.Tune, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                            shape = RoundedCornerShape(24.dp)
+                            shape = RoundedCornerShape(28.dp),
+                            singleLine = true,
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent
+                            )
                         )
-                        DropdownMenu(
-                            expanded = showSortMenu,
-                            onDismissRequest = { showSortMenu = false }
-                        ) {
-                            SessionSortOrder.entries.forEach { order ->
-                                DropdownMenuItem(
-                                    text = { Text(order.displayName) },
-                                    onClick = { 
-                                        sortOrder = order
-                                        showSortMenu = false
-                                    }
-                                )
+                        
+                        Spacer(modifier = Modifier.width(8.dp))
+                        
+                        Box {
+                            FilterChip(
+                                selected = true,
+                                onClick = { showSortMenu = true },
+                                label = { 
+                                    Text(
+                                        when(sortOrder) {
+                                            SessionSortOrder.DATE_NEWEST -> "Newest"
+                                            SessionSortOrder.DATE_OLDEST -> "Oldest"
+                                            SessionSortOrder.NAME -> "A-Z"
+                                            SessionSortOrder.FAVORITES -> "Favorites"
+                                        }
+                                    )
+                                },
+                                trailingIcon = { Icon(AppIcons.Tune, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                                shape = RoundedCornerShape(24.dp)
+                            )
+                            DropdownMenu(
+                                expanded = showSortMenu,
+                                onDismissRequest = { showSortMenu = false }
+                            ) {
+                                SessionSortOrder.entries.forEach { order ->
+                                    DropdownMenuItem(
+                                        text = { Text(order.displayName) },
+                                        onClick = { 
+                                            sortOrder = order
+                                            showSortMenu = false
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
@@ -161,53 +210,91 @@ fun IsolatesScreen(
             }
         },
         floatingActionButton = {
-            Column(horizontalAlignment = Alignment.End) {
-                AnimatedVisibility(
-                    visible = isFabExpanded,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
+            if (!isSelectionMode) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.BottomEnd
                 ) {
                     Column(
                         horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.padding(bottom = 12.dp)
+                        verticalArrangement = Arrangement.spacedBy(20.dp), // Standardized 20dp vertical rhythm
+                        modifier = Modifier.padding(bottom = 92.dp, end = 16.dp) // Aligns Column perfectly over main FAB center
                     ) {
-                        ExtendedFabItem(
-                            label = "Incognito Chat",
-                            icon = AppIcons.VisibilityOff,
-                            containerColor = MaterialTheme.colorScheme.secondary,
-                            onClick = {
-                                isFabExpanded = false
-                                viewModel.createNewSession(isIncognito = true) { id ->
-                                    onSessionSelected(id)
-                                }
+                        // Staggered Entry for New Chat Options
+                        var showSecond by remember { mutableStateOf(false) }
+                        LaunchedEffect(isFabExpanded) {
+                            if (isFabExpanded) {
+                                delay(100)
+                                showSecond = true
+                            } else {
+                                showSecond = false
                             }
-                        )
-                        ExtendedFabItem(
-                            label = "Regular Chat",
-                            icon = AppIcons.ChatOutline,
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            onClick = {
-                                isFabExpanded = false
-                                viewModel.createNewSession(isIncognito = false) { id ->
-                                    onSessionSelected(id)
+                        }
+
+                        // Second Item (Incognito) - Delayed entrance
+                        AnimatedVisibility(
+                            visible = showSecond,
+                            enter = slideInVertically(
+                                initialOffsetY = { it / 2 },
+                                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+                            ) + fadeIn(),
+                            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut()
+                        ) {
+                            ExtendedFabItem(
+                                label = "Incognito Chat",
+                                icon = AppIcons.VisibilityOff,
+                                containerColor = MaterialTheme.colorScheme.secondary,
+                                onClick = {
+                                    isFabExpanded = false
+                                    viewModel.createNewSession(isIncognito = true) { id ->
+                                        onSessionSelected(id)
+                                    }
                                 }
-                            }
+                            )
+                        }
+
+                        // First Item (Regular)
+                        AnimatedVisibility(
+                            visible = isFabExpanded,
+                            enter = slideInVertically(
+                                initialOffsetY = { it / 2 },
+                                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+                            ) + fadeIn(),
+                            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut()
+                        ) {
+                            ExtendedFabItem(
+                                label = "Regular Chat",
+                                icon = AppIcons.ChatOutline,
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                onClick = {
+                                    isFabExpanded = false
+                                    viewModel.createNewSession(isIncognito = false) { id ->
+                                        onSessionSelected(id)
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    val rotation by animateFloatAsState(
+                        targetValue = if (isFabExpanded) 45f else 0f,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+                    )
+
+                    FloatingActionButton(
+                        onClick = { if (!isGenerating) isFabExpanded = !isFabExpanded },
+                        modifier = Modifier.padding(16.dp),
+                        containerColor = if (isGenerating) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        else if (isFabExpanded) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
+                        contentColor = if (isGenerating) MaterialTheme.colorScheme.outline
+                        else if (isFabExpanded) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
+                    ) {
+                        Icon(
+                            AppIcons.Add,
+                            contentDescription = "New Chat Options",
+                            modifier = Modifier.rotate(rotation)
                         )
                     }
-                }
-                
-                FloatingActionButton(
-                    onClick = { if (!isGenerating) isFabExpanded = !isFabExpanded },
-                    containerColor = if (isGenerating) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) 
-                                    else if (isFabExpanded) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
-                    contentColor = if (isGenerating) MaterialTheme.colorScheme.outline
-                                  else if (isFabExpanded) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Icon(
-                        if (isFabExpanded) AppIcons.Close else AppIcons.Add,
-                        contentDescription = "New Chat Options"
-                    )
                 }
             }
         }
@@ -255,9 +342,25 @@ fun IsolatesScreen(
                 item { EmptyIsolatesView() }
             } else {
                 items(filteredSessions, key = { it.id }) { session ->
+                    val isSelected = remember(selectedSessionIds.size) { 
+                        derivedStateOf { session.id in selectedSessionIds } 
+                    }
+                    
                     IsolateItem(
                         session = session,
-                        onClick = { onSessionSelected(session.id) },
+                        isSelected = isSelected.value,
+                        onClick = { 
+                            if (isSelectionMode) {
+                                if (session.id in selectedSessionIds) {
+                                    selectedSessionIds.remove(session.id)
+                                    if (selectedSessionIds.isEmpty()) isSelectionMode = false
+                                } else {
+                                    selectedSessionIds.add(session.id)
+                                }
+                            } else {
+                                onSessionSelected(session.id) 
+                            }
+                        },
                         onDelete = { if (!isGenerating) sessionToDelete = session },
                         onFavoriteToggle = { viewModel.toggleFavorite(session.id, !session.isFavorite) },
                         onDuplicate = { viewModel.duplicateSession(session.id) },
@@ -267,6 +370,10 @@ fun IsolatesScreen(
                                 val text = viewModel.getFullChatText(session.id)
                                 clipboardManager.setText(AnnotatedString(text))
                             }
+                        },
+                        onEnterSelectionMode = {
+                            isSelectionMode = true
+                            selectedSessionIds.add(session.id)
                         }
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -412,25 +519,29 @@ fun ExtendedFabItem(
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.clickable(onClick = onClick)
+        horizontalArrangement = Arrangement.End
     ) {
         Card(
             shape = RoundedCornerShape(8.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            modifier = Modifier.padding(end = 12.dp)
         ) {
             Text(
                 text = label,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                style = MaterialTheme.typography.labelMedium
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold
             )
         }
-        SmallFloatingActionButton(
+        
+        Spacer(modifier = Modifier.width(16.dp)) // Standardized 16dp horizontal gap
+
+        FloatingActionButton(
             onClick = onClick,
             containerColor = containerColor,
-            contentColor = MaterialTheme.colorScheme.onPrimary
+            contentColor = MaterialTheme.colorScheme.onPrimary,
+            elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp)
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp))
         }
     }
 }
@@ -439,27 +550,37 @@ fun ExtendedFabItem(
 @Composable
 fun IsolateItem(
     session: ChatSession,
+    isSelected: Boolean = false,
     onClick: () -> Unit,
     onDelete: () -> Unit,
     onFavoriteToggle: () -> Unit,
     onDuplicate: () -> Unit,
     onRename: () -> Unit,
-    onCopyAll: () -> Unit
+    onCopyAll: () -> Unit,
+    onEnterSelectionMode: () -> Unit = {}
 ) {
     val dateFormat = SimpleDateFormat("MMM dd, hh:mm a", Locale.getDefault())
     val dateString = dateFormat.format(Date(session.timestamp))
     var showMenu by remember { mutableStateOf(false) }
+
+    val backgroundColor by animateColorAsState(
+        targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+                      else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+        animationSpec = spring(stiffness = Spring.StiffnessLow)
+    )
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = { showMenu = true }
+                onLongClick = { 
+                    if (!isSelected) showMenu = true 
+                }
             ),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = backgroundColor
         )
     ) {
         Row(
@@ -471,12 +592,15 @@ fun IsolateItem(
                     .size(48.dp)
                     .clip(CircleShape)
                     .background(
-                        if (session.isIncognito) MaterialTheme.colorScheme.secondaryContainer 
+                        if (isSelected) MaterialTheme.colorScheme.primary
+                        else if (session.isIncognito) MaterialTheme.colorScheme.secondaryContainer 
                         else MaterialTheme.colorScheme.primaryContainer
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                if (session.imageUri != null) {
+                if (isSelected) {
+                    Icon(AppIcons.Check, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+                } else if (session.imageUri != null) {
                     AsyncImage(
                         model = session.imageUri,
                         contentDescription = null,
@@ -520,8 +644,10 @@ fun IsolateItem(
             }
             
             Box {
-                IconButton(onClick = { showMenu = true }) {
-                    Icon(AppIcons.More, contentDescription = "More")
+                if (!isSelected) {
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(AppIcons.More, contentDescription = "More")
+                    }
                 }
                 DropdownMenu(
                     expanded = showMenu,
@@ -546,6 +672,11 @@ fun IsolateItem(
                         text = { Text("Copy All Text") },
                         onClick = { onCopyAll(); showMenu = false },
                         leadingIcon = { Icon(AppIcons.CopyAll, contentDescription = null) }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Select Multiple") },
+                        onClick = { onEnterSelectionMode(); showMenu = false },
+                        leadingIcon = { Icon(AppIcons.Check, contentDescription = null) }
                     )
                     HorizontalDivider()
                     DropdownMenuItem(

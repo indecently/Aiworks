@@ -37,10 +37,14 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val intentFlow = MutableStateFlow<Intent?>(null)
+    private val _assistantIntentConsumed = MutableStateFlow(false)
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.action == "android.intent.action.ASSISTANT") {
+            _assistantIntentConsumed.value = false // Reset consumption on new invocation
+        }
         intentFlow.value = intent
     }
 
@@ -48,6 +52,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (intent?.action == "android.intent.action.ASSISTANT") {
+            _assistantIntentConsumed.value = false
+        }
         intentFlow.value = intent
 
         setContent {
@@ -62,6 +69,7 @@ class MainActivity : ComponentActivity() {
                 val lockEnabled by settingsManager.appLockEnabled.collectAsState(initial = false)
 
                 val currentIntent by intentFlow.collectAsState()
+                val isIntentConsumed by _assistantIntentConsumed.collectAsState()
 
                 // Digital Assistant Trigger Logic - MOVE UP to ensure state is set before UI evaluation
                 LaunchedEffect(currentIntent) {
@@ -74,7 +82,12 @@ class MainActivity : ComponentActivity() {
                     if (lockEnabled && !isUnlocked && !isTransientUnlock) {
                         LockScreen(onUnlock = { viewModel.verifyAndUnlock(it) })
                     } else {
-                        MainApp(viewModel, currentIntent)
+                        MainApp(
+                            viewModel = viewModel, 
+                            intent = currentIntent, 
+                            isIntentConsumed = isIntentConsumed,
+                            onIntentConsumed = { _assistantIntentConsumed.value = true }
+                        )
                     }
                     GlobalLoadingOverlay(status = modelStatus)
                 }
@@ -85,7 +98,12 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3AdaptiveApi::class)
 @Composable
-fun MainApp(viewModel: ChatViewModel, intent: Intent? = null) {
+fun MainApp(
+    viewModel: ChatViewModel, 
+    intent: Intent? = null, 
+    isIntentConsumed: Boolean = false,
+    onIntentConsumed: () -> Unit = {}
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val settingsManager = remember { com.birkneo.Aiworks.di.GemmaContainer.getSettingsManager(context) }
     val scope = rememberCoroutineScope()
@@ -113,12 +131,13 @@ fun MainApp(viewModel: ChatViewModel, intent: Intent? = null) {
     val backStack = rememberNavBackStack(startScreen)
     
     // Digital Assistant Trigger Logic
-    LaunchedEffect(intent) {
-        if (intent?.action == "android.intent.action.ASSISTANT") {
+    LaunchedEffect(intent, isIntentConsumed) {
+        if (intent?.action == "android.intent.action.ASSISTANT" && !isIntentConsumed) {
             // Check if we are already in a chat to avoid double-stacking
             if (backStack.last() !is Screen.Chat) {
                 // Trigger a new chat session immediately
                 viewModel.createNewSession(isIncognito = false) { sessionId ->
+                    onIntentConsumed()
                     backStack.add(Screen.Chat(sessionId = sessionId))
                 }
             }
@@ -135,6 +154,7 @@ fun MainApp(viewModel: ChatViewModel, intent: Intent? = null) {
                 if (isTransientUnlock && backStack.size == 2 && backStack.last() is Screen.Chat) {
                     viewModel.closeSession() // HARD WIPE ephemeral assistant session
                     viewModel.setTransientUnlock(false)
+                    backStack.removeAt(backStack.size - 1) // FIX: Remove screen to avoid Ghost Chat
                 } else {
                     // Regular back navigation - if leaving chat, close session to ensure cleanup
                     val currentScreen = backStack.last()

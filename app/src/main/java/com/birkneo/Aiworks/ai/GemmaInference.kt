@@ -56,7 +56,8 @@ class GemmaInference(private val context: Context) {
     private fun createExecutorService() = Executors.newSingleThreadExecutor(object : ThreadFactory {
         override fun newThread(r: Runnable): Thread {
             return Thread(r, "gemma-inference-thread").apply {
-                priority = Thread.MAX_PRIORITY
+                // Adjust to BACKGROUND priority to ensure UI thread is never starved
+                priority = Thread.MIN_PRIORITY
             }
         }
     })
@@ -217,28 +218,15 @@ class GemmaInference(private val context: Context) {
     fun sendMessage(
         text: String,
         imageUri: String? = null,
-        audioUri: String? = null,
-        persona: String = "",
-        systemDirective: String = "",
-        longTermMemory: String = ""
+        audioUri: String? = null
     ): Flow<String>? {
         val contents = mutableListOf<Content>()
         
-        // Securely format the prompt using Gemma's required control tokens for the optimized E2B model.
-        // MULTIMODAL RULE: Attachments must be inside the turn markers to be "seen" by the model.
+        // OPTIMIZED: sendMessage now focuses strictly on the active turn.
+        // History and System instructions are managed by the KV cache.
         val promptStart = buildString {
             append("<start_of_turn>user\n")
-            if (longTermMemory.isNotBlank()) {
-                append("BACKGROUND CONTEXT (PAST FACTS):\n").append(longTermMemory).append("\n\n")
-            }
-            // PERSONA DOMINANCE: Persona is injected LAST in the system block for max adherence.
-            if (persona.isNotBlank()) {
-                append("IDENTITY & INSTRUCTIONS:\n").append(persona).append("\n")
-            }
-            append("\n").append(text).append("\n")
-            if (systemDirective.isNotBlank()) {
-                append(systemDirective).append("\n")
-            }
+            append(text).append("\n")
         }
         
         contents.add(Content.Text(promptStart))
@@ -381,6 +369,61 @@ class GemmaInference(private val context: Context) {
             null
         } finally {
             // CRITICAL: Guarantee native memory is freed to prevent OOM
+            tempConversation?.close()
+        }
+    }
+
+    /**
+     * PROCESS B: Recursive Condensation.
+     * Merges current Long-Term Memory with new segments into a single high-density core.
+     */
+    suspend fun distillMemory(currentLtm: String, newSegment: String): String? = withContext(inferenceDispatcher) {
+        val currentEngine = engine ?: return@withContext null
+        
+        conversation?.close()
+        conversation = null
+
+        val prompt = """
+            Below is the 'EXISTING MEMORY' and a 'NEW CONVERSATION SEGMENT'. 
+            Your task is to merge them into a single, high-density 'CORE MEMORY'.
+            
+            RULES:
+            1. Retain high-value facts (user preferences, project names, established facts).
+            2. Discard transient noise (greetings, ephemeral errors, social filler).
+            3. Be extremely concise. Use short sentences.
+            4. If facts conflict, prioritize the 'NEW CONVERSATION SEGMENT'.
+
+            EXISTING MEMORY:
+            $currentLtm
+
+            NEW CONVERSATION SEGMENT:
+            $newSegment
+
+            NEW CONDENSED CORE MEMORY:
+        """.trimIndent()
+        
+        var tempConversation: Conversation? = null
+        try {
+            tempConversation = currentEngine.createConversation(
+                ConversationConfig(
+                    samplerConfig = SamplerConfig(temperature = 0.1, topK = 1, topP = 1.0, seed = 0)
+                )
+            )
+            
+            val result = StringBuilder()
+            tempConversation.sendMessageAsync(prompt).collect { message ->
+                val contentsList = message.contents.contents
+                for (content in contentsList) {
+                    if (content is Content.Text) {
+                        result.append(content.text)
+                    }
+                }
+            }
+            result.toString().trim().ifEmpty { null }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        } finally {
             tempConversation?.close()
         }
     }

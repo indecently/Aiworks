@@ -301,7 +301,8 @@ fun ChatScreen(
                         onSpeak = { viewModel.speak(it) },
                         onEdit = { viewModel.editMessage(message.id, it) },
                         onCopy = { clipboardManager.setText(AnnotatedString(message.text)) },
-                        onDelete = { messageToDelete = message }
+                        onDelete = { messageToDelete = message },
+                        onRegenerate = { viewModel.regenerateResponse() }
                     )
                 }
                 
@@ -544,10 +545,12 @@ fun MessageBubble(
     onSpeak: (String) -> Unit = {},
     onEdit: (String) -> Unit = {},
     onCopy: () -> Unit = {},
-    onDelete: () -> Unit = {}
+    onDelete: () -> Unit = {},
+    onRegenerate: () -> Unit = {}
 ) {
     val isUser = message.role == MessageRole.USER
     var showEditDialog by remember { mutableStateOf(false) }
+    var showRegenerateDialog by remember { mutableStateOf(false) }
     val alignment = if (isUser) Alignment.End else Alignment.Start
     
     val containerColor = if (isUser) {
@@ -679,6 +682,17 @@ fun MessageBubble(
                         )
                     }
                     IconButton(
+                        onClick = { showRegenerateDialog = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            AppIcons.Reset,
+                            contentDescription = "Regenerate Response",
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    IconButton(
                         onClick = onDelete,
                         modifier = Modifier.size(32.dp)
                     ) {
@@ -702,6 +716,17 @@ fun MessageBubble(
                         )
                     }
                     IconButton(
+                        onClick = { showRegenerateDialog = true },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            AppIcons.Reset,
+                            contentDescription = "Regenerate Response",
+                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                    IconButton(
                         onClick = onDelete,
                         modifier = Modifier.size(32.dp)
                     ) {
@@ -715,6 +740,27 @@ fun MessageBubble(
                 }
             }
         }
+    }
+
+    if (showRegenerateDialog) {
+        AlertDialog(
+            onDismissRequest = { showRegenerateDialog = false },
+            title = { Text("Regenerate Response") },
+            text = { Text("Regenerate this response? This will discard the current output.") },
+            confirmButton = {
+                Button(onClick = {
+                    onRegenerate()
+                    showRegenerateDialog = false
+                }) {
+                    Text("Regenerate")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRegenerateDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 
     if (showEditDialog) {

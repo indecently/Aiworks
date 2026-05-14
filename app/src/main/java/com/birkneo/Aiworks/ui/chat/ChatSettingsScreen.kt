@@ -316,9 +316,14 @@ fun ChatSettingsScreen(
                                 Text("Messages", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                                 Text("$messageCount", style = MaterialTheme.typography.titleMedium)
                             }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text("Est. Tokens", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text("Raw History", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                                 Text("$tokenEstimate", style = MaterialTheme.typography.titleMedium)
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text("LTM Anchor", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                                val anchorTokens = viewModel.estimateTokens(sessionMemory ?: "")
+                                Text("$anchorTokens", style = MaterialTheme.typography.titleMedium)
                             }
                         }
 
