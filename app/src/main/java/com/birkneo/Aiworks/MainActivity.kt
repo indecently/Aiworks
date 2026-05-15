@@ -22,6 +22,8 @@ import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
+import android.view.HapticFeedbackConstants
+import androidx.compose.ui.platform.LocalView
 import com.birkneo.Aiworks.ui.chat.ChatScreen
 import com.birkneo.Aiworks.ui.chat.ChatSettingsScreen
 import com.birkneo.Aiworks.ui.chat.ChatViewModel
@@ -105,6 +107,7 @@ fun MainApp(
     onIntentConsumed: () -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val view = LocalView.current
     val settingsManager = remember { com.birkneo.Aiworks.di.GemmaContainer.getSettingsManager(context) }
     val scope = rememberCoroutineScope()
     
@@ -150,6 +153,7 @@ fun MainApp(
         sceneStrategies = listOf(strategy),
         onBack = {
             if (!isGenerating && backStack.size > 1) {
+                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                 // Digital Assistant transient state handling
                 if (isTransientUnlock && backStack.size == 2 && backStack.last() is Screen.Chat) {
                     viewModel.closeSession() // HARD WIPE ephemeral assistant session

@@ -12,5 +12,6 @@ data class ChatMessage(
     val text: String,
     val imageUri: String? = null,
     val audioUri: String? = null,
-    val isStreaming: Boolean = false
+    val isStreaming: Boolean = false,
+    val isThinking: Boolean = false
 )

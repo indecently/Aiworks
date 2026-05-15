@@ -1,16 +1,15 @@
 package com.birkneo.Aiworks.ui.chat
 
+import android.view.HapticFeedbackConstants
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.*
@@ -20,15 +19,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
-import com.birkneo.Aiworks.data.ChatMessage
 import com.birkneo.Aiworks.data.database.ChatDatabase
-import com.birkneo.Aiworks.ui.settings.SettingsSection
+import com.birkneo.Aiworks.ui.settings.components.SettingsSection
 import com.birkneo.Aiworks.ui.theme.AppIcons
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,14 +36,13 @@ fun ChatSettingsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val chatDao = remember { ChatDatabase.getDatabase(context).chatDao() }
     val scope = rememberCoroutineScope()
 
-    // Reactive session data from Flow
     val session by viewModel.getSessionFlow(sessionId).collectAsStateWithLifecycle(initialValue = null)
     val isIncognito = session?.isIncognito ?: false
 
-    // Manual overrides for UI responsiveness (e.g. while typing)
     var personaOverride by remember { mutableStateOf<String?>(null) }
     
     val persona = personaOverride ?: session?.persona ?: ""
@@ -61,6 +58,10 @@ fun ChatSettingsScreen(
 
     val isCompressing by viewModel.isCompressingContext.collectAsState()
     
+    val memoryItems = remember(sessionMemory) {
+        sessionMemory?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
+    }
+
     LaunchedEffect(sessionId, session, isCompressing) {
         if (!isCompressing) {
             val texts = if (isIncognito) {
@@ -80,9 +81,7 @@ fun ChatSettingsScreen(
                     it,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
-            } catch (e: Exception) {
-                // ignore
-            }
+            } catch (e: Exception) {}
             viewModel.updateSessionImage(sessionId, it.toString())
         }
     }
@@ -94,9 +93,7 @@ fun ChatSettingsScreen(
                     it,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
-            } catch (e: Exception) {
-                // ignore
-            }
+            } catch (e: Exception) {}
             viewModel.updateSessionBackground(sessionId, it.toString())
         }
     }
@@ -106,7 +103,10 @@ fun ChatSettingsScreen(
             TopAppBar(
                 title = { Text("Chat Settings", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        onBack()
+                    }) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                     }
                 }
@@ -121,70 +121,73 @@ fun ChatSettingsScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-            // Section: Appearance
+            // Privacy Section
             item {
-                SettingsSection(
-                    icon = AppIcons.Palette,
-                    title = "Privacy & Visibility"
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("Incognito Mode", style = MaterialTheme.typography.titleSmall)
-                                Text(
-                                    text = if (isIncognito) "Chat history is volatile and will be wiped on exit." 
-                                           else "Chat history is persisted in secure storage.",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                            }
-                            Switch(
-                                checked = !isIncognito,
-                                onCheckedChange = { viewModel.toggleIncognito(sessionId, !it) }
-                            )
-                        }
-                        if (isIncognito) {
+                SettingsSection(icon = AppIcons.Palette, title = "Privacy & Visibility") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Incognito Mode", style = MaterialTheme.typography.titleSmall)
                             Text(
-                                text = "Note: Toggle 'Incognito Mode' OFF to persist this session and its memory.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
+                                text = if (isIncognito) "Chat history is volatile and will be wiped on exit." 
+                                       else "Chat history is persisted in secure storage.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline
                             )
                         }
+                        Switch(
+                            checked = !isIncognito,
+                            onCheckedChange = { 
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                viewModel.toggleIncognito(sessionId, !it) 
+                            }
+                        )
                     }
                 }
             }
 
-            // Section: Customization
+            // Reasoning Section
             item {
-                SettingsSection(
-                    icon = AppIcons.Edit,
-                    title = "Appearance"
-                ) {
+                SettingsSection(icon = AppIcons.Psychology, title = "Reasoning Engine") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Deep Reasoning", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                text = "Enable chain-of-thought for complex problem solving.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                        val isReasoning by remember(session) { derivedStateOf { session?.isReasoningMode == true } }
+                        Switch(
+                            checked = isReasoning,
+                            onCheckedChange = { 
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                viewModel.updateSessionReasoning(sessionId, it) 
+                            }
+                        )
+                    }
+                }
+            }
+
+            // Appearance Section
+            item {
+                SettingsSection(icon = AppIcons.Edit, title = "Appearance") {
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                        // Chat Picture
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Box(
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                modifier = Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.primaryContainer),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (chatPictureUri != null) {
-                                    AsyncImage(
-                                        model = chatPictureUri,
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
+                                    AsyncImage(model = chatPictureUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                                 } else {
                                     Icon(AppIcons.Person, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimaryContainer)
                                 }
@@ -194,32 +197,21 @@ fun ChatSettingsScreen(
                                 Text("Chat Picture", style = MaterialTheme.typography.titleSmall)
                                 Text("Visible on the home screen", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                             }
-                            Button(onClick = { pictureLauncher.launch("image/*") }) {
-                                Text("Change")
-                            }
+                            Button(onClick = { 
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                pictureLauncher.launch("image/*") 
+                            }) { Text("Change") }
                         }
 
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                        // Background Image
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Box(
-                                modifier = Modifier
-                                    .size(64.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(MaterialTheme.colorScheme.secondaryContainer),
+                                modifier = Modifier.size(64.dp).clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.secondaryContainer),
                                 contentAlignment = Alignment.Center
                             ) {
                                 if (backgroundUri != null) {
-                                    AsyncImage(
-                                        model = backgroundUri,
-                                        contentDescription = null,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
+                                    AsyncImage(model = backgroundUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
                                 } else {
                                     Icon(AppIcons.Image, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
                                 }
@@ -229,89 +221,38 @@ fun ChatSettingsScreen(
                                 Text("Chat Background", style = MaterialTheme.typography.titleSmall)
                                 Text("Personalize the chat window", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                             }
-                            Button(onClick = { backgroundLauncher.launch("image/*") }) {
-                                Text("Set")
-                            }
+                            Button(onClick = { 
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                backgroundLauncher.launch("image/*") 
+                            }) { Text("Set") }
                         }
                     }
                 }
             }
 
-            // Section: Persona
+            // Persona Section
             item {
-                SettingsSection(
-                    icon = AppIcons.Psychology,
-                    title = "Persona & Instructions"
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
-                            value = persona,
-                            onValueChange = { 
-                                personaOverride = it
-                                viewModel.updateSessionPersona(sessionId, it)
-                            },
-                            label = { Text("Custom Instructions") },
-                            placeholder = { Text("e.g., 'Answer like a pirate' or 'Be concise and technical'") },
-                            modifier = Modifier.fillMaxWidth(),
-                            minLines = 3,
-                            maxLines = 5,
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        Text(
-                            text = "These instructions shape how the AI interacts with you in this session. They are unique to this chat.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                SettingsSection(icon = AppIcons.Psychology, title = "Persona & Instructions") {
+                    OutlinedTextField(
+                        value = persona,
+                        onValueChange = { 
+                            personaOverride = it
+                            viewModel.updateSessionPersona(sessionId, it)
+                        },
+                        label = { Text("Custom Instructions") },
+                        modifier = Modifier.fillMaxWidth(),
+                        minLines = 3,
+                        maxLines = 5,
+                        shape = RoundedCornerShape(12.dp)
+                    )
                 }
             }
 
-            // Section: Voice & Audio
+            // Memory Section Title & Stats
             item {
-                SettingsSection(
-                    icon = AppIcons.Voice,
-                    title = "Voice & Speech"
-                ) {
+                SettingsSection(icon = AppIcons.Storage, title = "Context & Stats") {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text(
-                            text = "Configure the on-device Text-to-Speech engine. This affects the quality and voice of the 'Read Aloud' feature.",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                        
-                        Button(
-                            onClick = {
-                                val intent = Intent().apply {
-                                    action = "com.android.settings.TTS_SETTINGS"
-                                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                }
-                                context.startActivity(intent)
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                        ) {
-                            Icon(AppIcons.SpeakerNotes, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("System TTS Settings")
-                        }
-                    }
-                }
-            }
-
-            // Section: Session Memory
-            item {
-                SettingsSection(
-                    icon = AppIcons.Storage,
-                    title = "Context & Stats"
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column {
                                 Text("Messages", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
                                 Text("$messageCount", style = MaterialTheme.typography.titleMedium)
@@ -326,118 +267,69 @@ fun ChatSettingsScreen(
                                 Text("$anchorTokens", style = MaterialTheme.typography.titleMedium)
                             }
                         }
-
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
-                        Text(
-                            text = "Long-Term Memory",
-                            style = MaterialTheme.typography.titleSmall
-                        )
                         
-                        val memoryItems = remember(sessionMemory) {
-                            sessionMemory?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
-                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        Text(text = "Long-Term Memory", style = MaterialTheme.typography.titleSmall)
+                    }
+                }
+            }
 
-                        if (memoryItems.isEmpty()) {
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                shape = RoundedCornerShape(12.dp)
-                            ) {
-                                Text(
-                                    text = "No long-term context stored yet.",
-                                    modifier = Modifier.padding(16.dp),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
+            // Flattened Memory Items
+            if (memoryItems.isEmpty()) {
+                item {
+                    Text("No long-term context stored yet.", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
+                }
+            } else {
+                itemsIndexed(memoryItems) { index, item ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                        tonalElevation = 1.dp
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(text = item, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                            IconButton(onClick = { 
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                memoryToEdit = item; memoryToEditIndex = index 
+                            }, modifier = Modifier.size(24.dp)) {
+                                Icon(AppIcons.Edit, contentDescription = "Edit", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
                             }
-                        } else {
-                            // Since we are inside an outer LazyColumn item, we should use a fixed height or a Column
-                            // but the user specifically asked for a LazyColumn here.
-                            // To avoid nested scroll issues, I'll use a Box with a fixed height.
-                            Box(modifier = Modifier.fillMaxWidth().heightIn(max = 240.dp)) {
-                                LazyColumn(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                                    contentPadding = PaddingValues(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    items(memoryItems.size) { index ->
-                                        val item = memoryItems[index]
-                                        Surface(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = MaterialTheme.colorScheme.surface,
-                                            tonalElevation = 1.dp
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(12.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = item,
-                                                    modifier = Modifier.weight(1f),
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                )
-                                                IconButton(
-                                                    onClick = {
-                                                        memoryToEdit = item
-                                                        memoryToEditIndex = index
-                                                    },
-                                                    modifier = Modifier.size(24.dp)
-                                                ) {
-                                                    Icon(AppIcons.Edit, contentDescription = "Edit", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
-                                                }
-                                                IconButton(
-                                                    onClick = {
-                                                        val newList = memoryItems.toMutableList().apply { removeAt(index) }
-                                                        viewModel.updateSessionMemory(sessionId, if (newList.isEmpty()) null else newList.joinToString("\n"))
-                                                    },
-                                                    modifier = Modifier.size(24.dp)
-                                                ) {
-                                                    Icon(AppIcons.Delete, contentDescription = "Delete", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.error)
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
+                            IconButton(onClick = {
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                val newList = memoryItems.toMutableList().apply { removeAt(index) }
+                                viewModel.updateSessionMemory(sessionId, if (newList.isEmpty()) null else newList.joinToString("\n"))
+                            }, modifier = Modifier.size(24.dp)) {
+                                Icon(AppIcons.Delete, contentDescription = "Delete", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.error)
                             }
                         }
+                    }
+                }
+            }
 
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                            if (isCompressing) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(24.dp).padding(4.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            } else {
-                                TextButton(
-                                    onClick = { 
-                                        viewModel.generateLongTermMemory(sessionId)
-                                    }
-                                ) {
-                                    Icon(AppIcons.Welcome, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Generate Memory")
-                                }
-                            }
-                            
-                            if (sessionMemory != null && !isCompressing) {
-                                TextButton(
-                                    onClick = { 
-                                        viewModel.clearChatMemory(sessionId)
-                                    },
-                                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                                ) {
-                                    Icon(AppIcons.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Clear")
-                                }
-                            }
+            // Memory Actions
+            item {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    if (isCompressing) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(4.dp), strokeWidth = 2.dp)
+                    } else {
+                        TextButton(onClick = { 
+                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                            viewModel.generateLongTermMemory(sessionId) 
+                        }) {
+                            Icon(AppIcons.Welcome, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Generate Memory")
+                        }
+                    }
+                    if (sessionMemory != null && !isCompressing) {
+                        TextButton(onClick = { 
+                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                            viewModel.clearChatMemory(sessionId) 
+                        }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                            Icon(AppIcons.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Clear")
                         }
                     }
                 }
@@ -447,18 +339,13 @@ fun ChatSettingsScreen(
         memoryToEdit?.let { initialText ->
             EditMemoryDialog(
                 initialText = initialText,
-                onDismiss = { 
-                    memoryToEdit = null
-                    memoryToEditIndex = -1
-                },
+                onDismiss = { memoryToEdit = null; memoryToEditIndex = -1 },
                 onConfirm = { updatedText ->
-                    val memoryItems = sessionMemory?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
                     val newList = memoryItems.toMutableList().apply { 
                         if (memoryToEditIndex in indices) set(memoryToEditIndex, updatedText)
                     }
                     viewModel.updateSessionMemory(sessionId, newList.joinToString("\n"))
-                    memoryToEdit = null
-                    memoryToEditIndex = -1
+                    memoryToEdit = null; memoryToEditIndex = -1
                 }
             )
         }
@@ -466,34 +353,13 @@ fun ChatSettingsScreen(
 }
 
 @Composable
-fun EditMemoryDialog(
-    initialText: String,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
-) {
+fun EditMemoryDialog(initialText: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var text by remember { mutableStateOf(initialText) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Edit Memory Snippet") },
-        text = {
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
-        },
-        confirmButton = {
-            Button(onClick = { onConfirm(text) }) {
-                Text("Update")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
+        text = { OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) },
+        confirmButton = { Button(onClick = { onConfirm(text) }) { Text("Update") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
-
-

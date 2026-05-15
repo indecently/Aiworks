@@ -3,32 +3,29 @@ package com.birkneo.Aiworks.ui.chat
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.birkneo.Aiworks.ai.GemmaInference
 import com.birkneo.Aiworks.ai.ModelStatus
 import com.birkneo.Aiworks.ai.ModelPersistenceService
+import com.birkneo.Aiworks.ai.PromptArchitect
 import com.birkneo.Aiworks.data.ChatMessage
 import com.birkneo.Aiworks.data.MessageRole
-import com.birkneo.Aiworks.data.database.ChatDatabase
-import com.birkneo.Aiworks.data.entity.ChatMessageEntity
 import com.birkneo.Aiworks.data.entity.ChatSession
-import com.birkneo.Aiworks.settings.SettingsManager
-import com.birkneo.Aiworks.util.AudioRecorder
 import com.birkneo.Aiworks.di.GemmaContainer
+import com.birkneo.Aiworks.util.MediaPersistenceManager
 import java.io.File
 import java.util.UUID
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -37,7 +34,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val gemmaInference = GemmaContainer.getGemmaInference(application)
     private val settingsManager = GemmaContainer.getSettingsManager(application)
-    private val chatDao = ChatDatabase.getDatabase(application).chatDao()
+    private val repository = GemmaContainer.getChatRepository(application)
     private val audioRecorder = GemmaContainer.getAudioRecorder(application)
     private val ttsManager = GemmaContainer.getTtsManager(application)
 
@@ -45,35 +42,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _streamingMessage = MutableStateFlow<ChatMessage?>(null)
     val streamingMessage: StateFlow<ChatMessage?> = _streamingMessage.asStateFlow()
 
-    // Volatile memory for incognito sessions
-    private val _volatileMessages = MutableStateFlow<List<ChatMessage>>(emptyList())
-
-    @OptIn(ExperimentalCoroutinesApi::class)
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     val messages: StateFlow<List<ChatMessage>> = _currentSessionIdFlow
         .flatMapLatest { sessionId ->
             if (sessionId == null) flowOf(emptyList())
-            else {
-                // Determine if the current session is incognito to switch source
-                val sessionFlow = chatDao.getSessionFlowById(sessionId)
-                sessionFlow.flatMapLatest { session ->
-                    if (session?.isIncognito == true) {
-                        _volatileMessages
-                    } else {
-                        chatDao.getMessagesForSession(sessionId).map { entities ->
-                            entities.map { entity ->
-                                ChatMessage(
-                                    id = entity.id,
-                                    role = entity.role,
-                                    text = entity.text,
-                                    imageUri = entity.imageUri,
-                                    audioUri = entity.audioUri,
-                                    isStreaming = false
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+            else repository.getMessagesForSession(sessionId)
         }
         .combine(_streamingMessage) { dbMessages, streaming ->
             dbMessages + listOfNotNull(streaming)
@@ -98,7 +71,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     val recordingAmplitude: StateFlow<Float> = audioRecorder.amplitude
         .stateIn(viewModelScope, SharingStarted.Lazily, 0f)
 
-    val sessions: StateFlow<List<ChatSession>> = chatDao.getAllSessions()
+    val sessions: StateFlow<List<ChatSession>> = repository.getAllSessionsFlow()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     private var currentSessionId: String? = null
@@ -107,10 +80,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var messageCollectionJob: Job? = null
     private var currentAudioFile: File? = null
     
-    // Phase 3: Prompt Fragment Cache
-    private var cachedSystemPrompt: String? = null
+    // SERIALIZATION: Protect LiteRT engine from concurrent Summary vs Chat tasks
+    private val engineMutex = Mutex()
 
-    // Process A: Rolling Summary Counter
+    private var cachedSystemPrompt: String? = null
+    private var cachedTemperature: Double? = null
+    private var cachedTopK: Int? = null
+    private var cachedTopP: Double? = null
+    private var cachedMaxTokens: Int? = null
     private val sessionMessageCounters = mutableMapOf<String, Int>()
 
     private val _pendingImageUri = MutableStateFlow<String?>(null)
@@ -122,35 +99,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val _isCompressingContext = MutableStateFlow(false)
     val isCompressingContext: StateFlow<Boolean> = _isCompressingContext.asStateFlow()
 
-    private val BASE_SYSTEM_PROMPT = """
-        You are a highly capable and versatile AI assistant powered by Google's Gemma model. 
-        Your goal is to be helpful, accurate, and concise. 
-        
-        CRITICAL CAPABILITY: You are a NATIVE MULTIMODAL model. 
-        - You can SEE images provided as attachments.
-        - You can HEAR audio files provided as attachments.
-        Process these modalities directly. If an audio file is attached, listen to its content and respond accordingly.
-
-        Follow the user's instructions carefully. 
-        If you are unsure about something, state that you don't know rather than hallucinating.
-        Maintain a professional yet friendly tone.
-        
-        Use the 'RECENT CONVERSATION HISTORY' provided below to maintain continuity and context in your responses.
-    """.trimIndent()
-
     init {
         gemmaInference.cleanupMediaCache()
-        
-        // IMMEDIATE: Check filesystem for model to allow background pre-loading 
-        // while the rest of the init block handles async logic.
         val internalModelFile = File(getApplication<Application>().filesDir, "model.litertlm")
         val hasLocalModel = internalModelFile.exists()
 
         viewModelScope.launch {
-            // Cleanup any stale incognito sessions on start
-            chatDao.deleteIncognitoSessions()
-            
-            // Wait for unlock if app lock is enabled, OR a transient assistant unlock
+            repository.deleteIncognitoSessions()
             val lockEnabled = settingsManager.appLockEnabled.first()
             if (lockEnabled) {
                 combine(_isUnlocked, _isTransientUnlock) { unlocked, transient ->
@@ -158,17 +113,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }.first { it }
             }
 
-            // Assistant Settle Delay: If triggered by assistant, give the OS time to 
-            // stabilize GPU/NPU resources before native initialization.
             if (_isTransientUnlock.value) {
                 delay(500)
             }
 
-            // Ensure model path is retrieved or use fallback
             var path = settingsManager.modelPath.first()
-            
-            // If the stored path is empty but we have a file in internal storage, use it.
-            // This happens if a previous URI load was interrupted before persistence.
             if (path.isNullOrEmpty() && hasLocalModel) {
                 path = internalModelFile.absolutePath
             }
@@ -181,15 +130,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectSession(sessionId: String) {
         if (currentSessionId == sessionId) return
-        
-        // Stop any current generation or TTS when switching sessions
         stopGeneration()
         stopSpeaking()
-        
         currentSessionId = sessionId
         _currentSessionIdFlow.value = sessionId
-        _volatileMessages.value = emptyList() // Reset volatile memory on switch
-        
         messageCollectionJob?.cancel()
         messageCollectionJob = viewModelScope.launch {
             prepareInferenceForSession(sessionId)
@@ -199,15 +143,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun createNewSession(title: String = "New Chat", isIncognito: Boolean = false, onCreated: (String) -> Unit) {
         viewModelScope.launch {
             val session = ChatSession(title = title, isIncognito = isIncognito)
-            chatDao.insertSession(session)
+            repository.insertSession(session)
             onCreated(session.id)
         }
     }
 
     fun deleteSession(session: ChatSession) {
         viewModelScope.launch {
-            chatDao.deleteMessagesForSession(session.id)
-            chatDao.deleteSession(session)
+            repository.clearMessagesForSession(session.id)
+            repository.deleteSession(session)
             if (currentSessionId == session.id) {
                 currentSessionId = null
                 _currentSessionIdFlow.value = null
@@ -220,20 +164,29 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             _modelStatus.value = ModelStatus.Loading(0f)
             val temperature = settingsManager.temperature.first()
             val maxTokens = settingsManager.maxTokens.first()
-            val status = gemmaInference.loadModel(path, temperature, maxTokens) { progress ->
+            val topK = settingsManager.topK.first()
+            val topP = settingsManager.topP.first()
+            val accelerator = settingsManager.computeAccelerator.first()
+            val useGpu = accelerator == "GPU"
+
+            val status = gemmaInference.loadModel(
+                modelPathOrUri = path,
+                temperature = temperature,
+                maxTokens = maxTokens,
+                topK = topK,
+                topP = topP,
+                useGpu = useGpu
+            ) { progress ->
                 _modelStatus.value = ModelStatus.Loading(progress)
             }
             _modelStatus.value = status
             if (status is ModelStatus.Ready) {
                 ModelPersistenceService.start(getApplication())
-                inferenceSessionId = null // Force re-init of conversation on new model
-                
-                // Persist the FINAL stable path (which will be the internal filesDir path if copied from URI)
+                inferenceSessionId = null
                 gemmaInference.getLoadedModelPath()?.let { loadedPath ->
                     settingsManager.setModelPath(loadedPath)
                 }
             } else if (status is ModelStatus.Error) {
-                // If loading failed (e.g. URI expired), clear the invalid path to prevent boot loops
                 settingsManager.setModelPath("")
             }
         }
@@ -262,42 +215,29 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _pendingAudioUri.value = null
 
         viewModelScope.launch {
-            val session = chatDao.getSessionById(sessionId)
-            val isIncognito = session?.isIncognito ?: false
-            
+            val session = repository.getSessionById(sessionId)
             val msgId = UUID.randomUUID().toString()
-            if (isIncognito) {
-                // Bypass database for incognito
-                val userMsg = ChatMessage(
-                    id = msgId,
-                    role = MessageRole.USER,
-                    text = text,
-                    imageUri = imageUri,
-                    audioUri = audioUri
-                )
-                _volatileMessages.update { it + userMsg }
-            } else {
-                chatDao.insertMessage(
-                    ChatMessageEntity(
-                        id = msgId,
-                        sessionId = sessionId,
-                        role = MessageRole.USER,
-                        text = text,
-                        imageUri = imageUri,
-                        audioUri = audioUri
-                    )
-                )
-                
-                if (session?.title == "New Chat") {
-                    val newTitle = if (text.length > 20) text.take(17) + "..." else if (text.isBlank()) "Media Message" else text
-                    chatDao.updateSessionTitle(sessionId, newTitle)
-                }
+            
+            // PERSIST MEDIA: Move files from temp cache/content URIs to permanent internal storage
+            val persistedImage = MediaPersistenceManager.persistMedia(getApplication(), imageUri)
+            val persistedAudio = MediaPersistenceManager.persistMedia(getApplication(), audioUri)
+
+            repository.insertMessage(sessionId, ChatMessage(
+                id = msgId,
+                role = MessageRole.USER,
+                text = text,
+                imageUri = persistedImage,
+                audioUri = persistedAudio
+            ))
+            
+            if (session?.title == "New Chat") {
+                val newTitle = if (text.length > 20) text.take(17) + "..." else if (text.isBlank()) "Media Message" else text
+                repository.updateSessionTitle(sessionId, newTitle)
             }
             
-            // Trigger actual inference
-            retriggerInference(text, imageUri, audioUri, msgId)
+            // Use the persisted URIs for inference as well for consistency
+            retriggerInference(text, persistedImage, persistedAudio, msgId)
 
-            // PROCESS A: Rolling Summary Trigger (Every 5 messages)
             val count = (sessionMessageCounters[sessionId] ?: 0) + 1
             sessionMessageCounters[sessionId] = count
             if (count >= 5) {
@@ -309,168 +249,133 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun generateLongTermMemory(sessionId: String) {
         viewModelScope.launch {
-            val session = chatDao.getSessionById(sessionId)
-            val isIncognito = session?.isIncognito ?: false
-            
-            // 1. Pull the last segment (Process A)
-            val msgList = if (isIncognito) {
-                _volatileMessages.value.takeLast(10)
-            } else {
-                chatDao.getRecentMessagesForSession(sessionId, 10).reversed().map { entity ->
-                    ChatMessage(id = entity.id, role = entity.role, text = entity.text)
-                }
-            }
-            
-            if (msgList.size < 2) return@launch 
-            
-            _isCompressingContext.value = true
-            try {
-                val textToSummarize = msgList.filter { it.text.isNotBlank() }
-                    .joinToString("\n") { "${it.role}: ${it.text}" }
-
-                if (textToSummarize.isBlank()) return@launch
-
-                val currentMemory = session?.longTermMemory ?: ""
+            engineMutex.withLock {
+                val session = repository.getSessionById(sessionId)
+                val msgList = repository.getRecentMessages(sessionId, 10)
                 
-                // PROCESS B: Recursive Condensation Check
-                // Threshold X = 1500 chars (approx 500 tokens)
-                val newSummary = if (currentMemory.length > 1500) {
-                    // Perform Distillation Pass
-                    gemmaInference.distillMemory(currentMemory, textToSummarize)
-                } else {
-                    // Regular Rolling Summary append
-                    val summary = gemmaInference.summarize(textToSummarize)
-                    if (summary != null) {
-                        if (currentMemory.isEmpty()) summary else "$currentMemory\n$summary"
-                    } else null
-                }
+                if (msgList.size < 2) return@withLock 
                 
-                if (newSummary != null) {
-                    chatDao.updateSessionMemory(sessionId, newSummary)
-                }
+                _isCompressingContext.value = true
+                try {
+                    val textToSummarize = msgList.filter { it.text.isNotBlank() }
+                        .joinToString("\n") { "${it.role}: ${it.text}" }
 
-                if (currentSessionId == sessionId) {
-                    // Force refresh of system instructions for current session
-                    cachedSystemPrompt = null
-                    prepareInferenceForSession(sessionId)
+                    if (textToSummarize.isBlank()) return@withLock
+
+                    val currentMemory = session?.longTermMemory ?: ""
+                    val newSummary = if (currentMemory.length > 1500) {
+                        gemmaInference.distillMemory(currentMemory, textToSummarize)
+                    } else {
+                        val summary = gemmaInference.summarize(textToSummarize)
+                        if (summary != null) {
+                            if (currentMemory.isEmpty()) summary else "$currentMemory\n$summary"
+                        } else null
+                    }
+                    
+                    if (newSummary != null) {
+                        repository.updateSessionMemory(sessionId, newSummary)
+                    }
+
+                    if (currentSessionId == sessionId) {
+                        cachedSystemPrompt = null
+                        // No need to call prepareInference here as it will be called by next message
+                        // and we already nulled inferenceSessionId or cachedSystemPrompt
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                } finally {
+                    _isCompressingContext.value = false
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                _isCompressingContext.value = false
             }
         }
     }
 
     fun toggleIncognito(sessionId: String, isIncognito: Boolean) {
         viewModelScope.launch {
-            chatDao.updateSessionIncognito(sessionId, isIncognito)
+            repository.updateSessionIncognito(sessionId, isIncognito)
             if (!isIncognito) {
-                // If converting to regular, persist current volatile messages
-                val currentVolatile = _volatileMessages.value
-                currentVolatile.forEach { msg ->
-                    chatDao.insertMessage(
-                        ChatMessageEntity(
-                            id = msg.id,
-                            sessionId = sessionId,
-                            role = msg.role,
-                            text = msg.text,
-                            imageUri = msg.imageUri,
-                            audioUri = msg.audioUri
-                        )
-                    )
-                }
-                _volatileMessages.value = emptyList()
+                repository.convertIncognitoToRegular(sessionId)
+            }
+        }
+    }
+
+    fun updateSessionReasoning(sessionId: String, enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateSessionReasoning(sessionId, enabled)
+            if (currentSessionId == sessionId) {
+                inferenceSessionId = null
             }
         }
     }
 
     fun getSessionFlow(sessionId: String): Flow<ChatSession?> {
-        return chatDao.getSessionFlowById(sessionId)
+        return repository.getSessionFlowById(sessionId)
     }
 
     private suspend fun prepareInferenceForSession(sessionId: String, excludeMsgId: String? = null) {
-        // OPTIMIZED: Only reset if the session changed or a reset was explicitly requested
-        if (inferenceSessionId == sessionId && cachedSystemPrompt != null) return
+        val temp = settingsManager.temperature.first()
+        val topK = settingsManager.topK.first()
+        val topP = settingsManager.topP.first()
+        val maxTokensTotal = settingsManager.maxTokens.first()
+
+        // FIXED: Now checking if parameters changed to ensure Settings are applied mid-session
+        if (inferenceSessionId == sessionId && 
+            cachedSystemPrompt != null && 
+            cachedTemperature == temp &&
+            cachedTopK == topK &&
+            cachedTopP == topP &&
+            cachedMaxTokens == maxTokensTotal &&
+            gemmaInference.isConversationActive()) return
         
-        val session = chatDao.getSessionById(sessionId)
-        val isIncognito = session?.isIncognito ?: false
+        val session = repository.getSessionById(sessionId)
         val longTermMemory = session?.longTermMemory ?: ""
         val persona = session?.persona ?: ""
         
-        val maxTokensTotal = settingsManager.maxTokens.first()
-        // DYNAMIC ALLOCATION: Use 90% for context, reserve 10% for response buffer
         val contextBudget = (maxTokensTotal * 0.9).toInt()
         
-        val basePromptTokens = gemmaInference.estimateTokens(BASE_SYSTEM_PROMPT)
+        val basePromptTokens = gemmaInference.estimateTokens(PromptArchitect.BASE_SYSTEM_PROMPT)
         val instructionsTokens = gemmaInference.estimateTokens(persona)
-        
-        // PRIORITY 1: The Condensed Core (The "Anchor" of LTM)
         val memoryTokens = gemmaInference.estimateTokens(longTermMemory)
         
-        // PRIORITY 2: The Sliding Window (Recent, raw conversational context)
-        // Window size shrinks as Anchor/Persona grows.
         var remainingBudgetForWindow = contextBudget - basePromptTokens - instructionsTokens - memoryTokens
-        
-        // Safety floor for window (at least 100 tokens if possible)
         if (remainingBudgetForWindow < 100) remainingBudgetForWindow = 100
 
-        // Fetch recent history from correct source
         val historyToInclude = mutableListOf<String>()
         var historyTokens = 0
         
-        if (isIncognito) {
-            val volatileList = _volatileMessages.value.reversed()
-            for (msg in volatileList) {
-                if (msg.id == excludeMsgId) continue
-                val messageText = "${msg.role}: ${msg.text}"
-                val tokens = gemmaInference.estimateTokens(messageText)
-                if (historyTokens + tokens < remainingBudgetForWindow) {
-                    historyToInclude.add(0, messageText)
-                    historyTokens += tokens
-                } else break
-            }
-        } else {
-            val recentEntities = chatDao.getRecentMessagesForSession(sessionId, 50)
-            for (entity in recentEntities) {
-                if (entity.id == excludeMsgId) continue
-                val messageText = "${entity.role}: ${entity.text}"
-                val tokens = gemmaInference.estimateTokens(messageText)
-                if (historyTokens + tokens < remainingBudgetForWindow) {
-                    historyToInclude.add(0, messageText) // Add to start to maintain order (since recentEntities is DESC)
-                    historyTokens += tokens
-                } else {
-                    break // Budget exceeded
-                }
-            }
+        val recentMsgs = repository.getRecentMessages(sessionId, 50).reversed()
+        for (msg in recentMsgs) {
+            if (msg.id == excludeMsgId) continue
+            val messageText = "${msg.role}: ${msg.text}"
+            val tokens = gemmaInference.estimateTokens(messageText)
+            if (historyTokens + tokens < remainingBudgetForWindow) {
+                historyToInclude.add(0, messageText)
+                historyTokens += tokens
+            } else break
         }
         
         val recentHistoryText = historyToInclude.joinToString("\n")
         
-        val systemPrompt = buildString {
-            append(BASE_SYSTEM_PROMPT)
-            
-            // Phase 3 Optimization: Re-ordered for adherence as per audit recommendation
-            if (longTermMemory.isNotEmpty()) {
-                append("\n\nBACKGROUND CONTEXT (PAST FACTS):\n")
-                append(longTermMemory)
-            }
-            
-            if (persona.isNotEmpty()) {
-                append("\n\nIDENTITY & INSTRUCTIONS:\n")
-                append(persona)
-            }
-
-            if (recentHistoryText.isNotEmpty()) {
-                append("\n\nRECENT CONVERSATION HISTORY:\n")
-                append(recentHistoryText)
-            }
-        }
+        val systemPrompt = PromptArchitect.constructSystemPrompt(
+            session = session,
+            longTermMemory = longTermMemory,
+            persona = persona,
+            recentHistoryText = recentHistoryText
+        )
         
         cachedSystemPrompt = systemPrompt
-        val temp = settingsManager.temperature.first()
-        gemmaInference.resetConversation(temp, maxTokensTotal, systemPrompt)
-        
+        cachedTemperature = temp
+        cachedTopK = topK
+        cachedTopP = topP
+        cachedMaxTokens = maxTokensTotal
+
+        gemmaInference.resetConversation(
+            temperature = temp, 
+            maxTokens = maxTokensTotal, 
+            topK = topK, 
+            topP = topP, 
+            systemInstruction = systemPrompt
+        )
         inferenceSessionId = sessionId
     }
 
@@ -490,19 +395,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun stopRecording() {
         audioRecorder.stop()
         _isRecording.value = false
-        _pendingAudioUri.value = currentAudioFile?.toURI().toString()
-    }
-
-    fun unlock(password: String): Boolean {
-        var success = false
-        viewModelScope.launch {
-            val storedPassword = settingsManager.appLockPassword.first()
-            if (password == storedPassword) {
-                _isUnlocked.value = true
-                success = true
-            }
-        }
-        return true
+        val uri = currentAudioFile?.toURI().toString()
+        _pendingAudioUri.value = uri
+        // PRACTICAL FIX: Clear pending image when audio recording is captured
+        _pendingImageUri.value = null
     }
 
     suspend fun verifyAndUnlock(password: String): Boolean {
@@ -517,83 +413,88 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setPendingImage(uri: String?) {
         _pendingImageUri.value = uri
+        // PRACTICAL FIX: Prevent OpenCL crash by enforcing one media type per prompt
+        if (uri != null) _pendingAudioUri.value = null
     }
 
     fun setPendingAudio(uri: String?) {
         _pendingAudioUri.value = uri
+        // PRACTICAL FIX: Prevent OpenCL crash by enforcing one media type per prompt
+        if (uri != null) _pendingImageUri.value = null
     }
 
     fun toggleFavorite(sessionId: String, isFavorite: Boolean) {
         viewModelScope.launch {
-            chatDao.updateSessionFavorite(sessionId, isFavorite)
+            repository.updateSessionFavorite(sessionId, isFavorite)
         }
     }
 
     fun updateSessionImage(sessionId: String, imageUri: String?) {
         viewModelScope.launch {
-            chatDao.updateSessionImage(sessionId, imageUri)
+            repository.updateSessionImage(sessionId, imageUri)
         }
     }
 
     fun updateSessionBackground(sessionId: String, backgroundUri: String?) {
         viewModelScope.launch {
-            chatDao.updateSessionBackground(sessionId, backgroundUri)
+            repository.updateSessionBackground(sessionId, backgroundUri)
         }
     }
 
     fun duplicateSession(sessionId: String) {
         viewModelScope.launch {
-            val session = chatDao.getSessionById(sessionId) ?: return@launch
+            val session = repository.getSessionById(sessionId) ?: return@launch
             val newSession = session.copy(
                 id = UUID.randomUUID().toString(),
                 title = "${session.title} (Copy)",
                 timestamp = System.currentTimeMillis(),
                 isFavorite = false
             )
-            chatDao.insertSession(newSession)
+            repository.insertSession(newSession)
             
-            // Copy messages
-            val messagesList = chatDao.getMessagesForSession(sessionId).first()
-            messagesList.forEach { entity ->
-                chatDao.insertMessage(entity.copy(id = UUID.randomUUID().toString(), sessionId = newSession.id))
+            val messagesList = repository.getRecentMessages(sessionId, 1000)
+            messagesList.forEach { msg ->
+                repository.insertMessage(newSession.id, msg.copy(id = UUID.randomUUID().toString()))
             }
         }
     }
 
     suspend fun getFullChatText(sessionId: String): String {
-        val messagesList = chatDao.getMessagesForSession(sessionId).first()
+        val messagesList = repository.getRecentMessages(sessionId, 1000)
         return messagesList.joinToString("\n\n") { "${it.role}: ${it.text}" }
     }
 
     fun updateSessionPersona(sessionId: String, persona: String?) {
         viewModelScope.launch {
-            chatDao.updateSessionPersona(sessionId, persona)
+            repository.updateSessionPersona(sessionId, persona)
             if (currentSessionId == sessionId) {
-                inferenceSessionId = null // Force re-init on next message
+                inferenceSessionId = null
             }
         }
     }
 
     fun updateSessionTitle(sessionId: String, title: String) {
         viewModelScope.launch {
-            chatDao.updateSessionTitle(sessionId, title)
+            repository.updateSessionTitle(sessionId, title)
         }
     }
 
     fun deleteMessageById(messageId: String) {
+        val sessionId = currentSessionId ?: return
         viewModelScope.launch {
-            val session = currentSessionId?.let { chatDao.getSessionById(it) }
-            if (session?.isIncognito == true) {
-                _volatileMessages.update { list -> list.filter { it.id != messageId } }
-            } else {
-                chatDao.deleteMessageById(messageId)
-            }
+            // Optional: Cleanup disk space on message deletion
+            val recent = repository.getRecentMessages(sessionId, 1000)
+            val target = recent.find { it.id == messageId }
+            MediaPersistenceManager.deleteMedia(target?.imageUri)
+            MediaPersistenceManager.deleteMedia(target?.audioUri)
+            
+            repository.deleteMessageById(sessionId, messageId)
         }
     }
 
     fun updateSessionMemory(sessionId: String, memory: String?) {
         viewModelScope.launch {
-            chatDao.updateSessionMemory(sessionId, memory)
+            repository.updateSessionMemory(sessionId, memory)
             if (currentSessionId == sessionId) {
                 inferenceSessionId = null
             }
@@ -605,19 +506,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         if (_isGenerating.value) return
         
         viewModelScope.launch {
-            // Ensure any stale context is cleared
             stopGeneration()
-            
-            // Delete last two messages (Assistant then User)
-            val lastMsg = chatDao.getLastMessageForSession(sessionId)
+            val lastMsg = repository.getLastMessage(sessionId)
             if (lastMsg != null) {
-                chatDao.deleteMessageById(lastMsg.id)
-                val precedingMsg = chatDao.getLastMessageForSession(sessionId)
+                repository.deleteMessageById(sessionId, lastMsg.id)
+                val precedingMsg = repository.getLastMessage(sessionId)
                 if (precedingMsg?.role == MessageRole.USER) {
-                    chatDao.deleteMessageById(precedingMsg.id)
+                    repository.deleteMessageById(sessionId, precedingMsg.id)
                 }
             }
-            // Reset inference to clear context of deleted messages
             inferenceSessionId = null
         }
     }
@@ -641,20 +538,15 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun regenerateResponse() {
         val sessionId = currentSessionId ?: return
-        // Force stop any hanging generation
         stopGeneration()
         
         viewModelScope.launch {
             try {
-                val lastMsg = chatDao.getLastMessageForSession(sessionId)
+                val lastMsg = repository.getLastMessage(sessionId)
                 if (lastMsg?.role == MessageRole.ASSISTANT) {
-                    // 1. Remove the old response
-                    chatDao.deleteMessageById(lastMsg.id)
-                    
-                    // 2. Find the prompt that triggered it
-                    val userMsg = chatDao.getLastMessageForSession(sessionId)
+                    repository.deleteMessageById(sessionId, lastMsg.id)
+                    val userMsg = repository.getLastMessage(sessionId)
                     if (userMsg?.role == MessageRole.USER) {
-                        // 3. Re-trigger inference
                         retriggerInference(userMsg.text, userMsg.imageUri, userMsg.audioUri)
                     }
                 }
@@ -671,182 +563,149 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             try {
-                val session = chatDao.getSessionById(sessionId)
-                if (session?.isIncognito == true) {
-                    val messagesList = _volatileMessages.value
-                    val targetMsg = messagesList.find { it.id == messageId }
-                    if (targetMsg != null) {
-                        // In incognito, we just re-trigger from this point
-                        // Wiping subsequent messages in RAM
-                        val index = messagesList.indexOf(targetMsg)
-                        _volatileMessages.value = messagesList.take(index + 1).map {
-                            if (it.id == messageId) it.copy(text = newText) else it
-                        }
-                        retriggerInference(newText, targetMsg.imageUri, targetMsg.audioUri, messageId)
-                    }
-                } else {
-                    val messagesList = chatDao.getMessagesForSession(sessionId).first()
-                    val targetEntity = messagesList.find { it.id == messageId }
-                    if (targetEntity != null) {
-                        // 1. Update the text in DB
-                        chatDao.updateMessageText(messageId, newText)
-                        // 2. Delete everything AFTER this message to prevent context mismatch
-                        chatDao.deleteMessagesAfter(sessionId, targetEntity.timestamp)
-                        
-                        // 3. Re-trigger inference
-                        retriggerInference(newText, targetEntity.imageUri, targetEntity.audioUri, messageId)
-                    }
-                }
+                // FIXED: Now only updates the text in the database.
+                // Does NOT trigger retriggerInference or delete subsequent messages.
+                repository.updateMessageText(messageId, newText)
             } catch (e: Exception) {
-                _isGenerating.value = false
-                ModelPersistenceService.updateStatus(getApplication(), false)
+                e.printStackTrace()
             }
         }
     }
 
     private fun retriggerInference(text: String, imageUri: String?, audioUri: String?, currentMsgId: String? = null) {
         val sessionId = currentSessionId ?: return
-        
         _isGenerating.value = true
         inferenceJob?.cancel()
 
         inferenceJob = viewModelScope.launch {
-            val assistantMessageId = UUID.randomUUID().toString()
-            var retryCount = 0
-            val maxRetries = 2
-            
-            try {
-                ModelPersistenceService.updateStatus(getApplication(), true)
+            engineMutex.withLock {
+                val assistantMessageId = UUID.randomUUID().toString()
+                var retryCount = 0
+                val maxRetries = 2
                 
-                var success = false
-                while (!success && retryCount <= maxRetries) {
-                    try {
-                        // FORCE context refresh only if NOT already prepared for this session
-                        // In Phase 1, we avoid resetting the conversation if it's the same session.
-                        prepareInferenceForSession(sessionId, currentMsgId)
-
-                        val session = chatDao.getSessionById(sessionId)
-                        val isIncognito = session?.isIncognito ?: false
-
-                        val responseAccumulator = StringBuilder()
-                        
-                        if (modelStatus.value is ModelStatus.Ready) {
-                            // Start streaming UI feedback
-                            _streamingMessage.value = ChatMessage(
-                                id = assistantMessageId,
-                                role = MessageRole.ASSISTANT,
-                                text = "",
-                                isStreaming = true
-                            )
-
-                            // Concurrent Pipe: Send raw turn directly to engine.
-                            // Persona and LTM are now handled via System Instructions in the engine's KV cache.
-                            gemmaInference.sendMessage(text, imageUri, audioUri)?.collect { token ->
-                                responseAccumulator.append(token)
-                                _streamingMessage.update { it?.copy(text = responseAccumulator.toString()) }
-                            }
+                try {
+                    ModelPersistenceService.updateStatus(getApplication(), true)
+                    var success = false
+                    while (!success && retryCount <= maxRetries) {
+                        try {
+                            prepareInferenceForSession(sessionId, currentMsgId)
+                            val session = repository.getSessionById(sessionId)
                             
-                            val finalResponse = responseAccumulator.toString()
-                            if (finalResponse.isNotBlank()) {
-                                if (isIncognito) {
-                                    val aiMsg = ChatMessage(
+                            if (modelStatus.value is ModelStatus.Ready) {
+                                val isDeepReasoning = session?.isReasoningMode == true
+                                _streamingMessage.value = ChatMessage(
+                                    id = assistantMessageId,
+                                    role = MessageRole.ASSISTANT,
+                                    text = "",
+                                    isStreaming = true,
+                                    isThinking = isDeepReasoning // PROACTIVE: Start in thinking state
+                                )
+
+                                val fullResponseAccumulator = StringBuilder()
+                                var thoughtTagFound = false
+                                var endTagDetected = false
+
+                                gemmaInference.sendMessage(text, imageUri, audioUri)?.collect { token ->
+                                    fullResponseAccumulator.append(token)
+                                    val currentFullText = fullResponseAccumulator.toString()
+                                    
+                                    // 1. Tag Detection
+                                    if (!thoughtTagFound && currentFullText.contains("<|channel>thought", ignoreCase = true)) {
+                                        thoughtTagFound = true
+                                    }
+                                    
+                                    if (!endTagDetected && currentFullText.contains("<channel|>", ignoreCase = true)) {
+                                        endTagDetected = true
+                                        _streamingMessage.update { it?.copy(isThinking = false) }
+                                    }
+
+                                    // 2. UI Updates
+                                    if (isDeepReasoning) {
+                                        if (endTagDetected) {
+                                            // Extract final answer after the LAST instance of the end tag
+                                            val parts = currentFullText.split(Regex("<channel|>", RegexOption.IGNORE_CASE), limit = 2)
+                                            if (parts.size > 1) {
+                                                _streamingMessage.update { it?.copy(text = parts[1].trimStart()) }
+                                            }
+                                        } else {
+                                            // MASK ALL OUTPUT while reasoning is active
+                                            _streamingMessage.update { it?.copy(text = "", isThinking = true) }
+                                        }
+                                    } else {
+                                        // Standard mode: Stream normally
+                                        _streamingMessage.update { it?.copy(text = currentFullText.trimStart()) }
+                                    }
+                                }
+                                
+                                val finalFullText = fullResponseAccumulator.toString()
+                                val finalResponse = if (isDeepReasoning && endTagDetected) {
+                                    finalFullText.split(Regex("<channel|>", RegexOption.IGNORE_CASE), limit = 2).lastOrNull()?.trim() ?: ""
+                                } else if (isDeepReasoning && !thoughtTagFound && finalFullText.length > 5 && !finalFullText.contains("<")) {
+                                    // RECOVERY: If mode is on but model failed to use tags, show content anyway
+                                    finalFullText.trim()
+                                } else {
+                                    finalFullText.trim()
+                                }
+                                if (finalResponse.isNotBlank()) {
+                                    repository.insertMessage(sessionId, ChatMessage(
                                         id = assistantMessageId,
                                         role = MessageRole.ASSISTANT,
                                         text = finalResponse
-                                    )
-                                    _volatileMessages.update { it + aiMsg }
+                                    ))
+                                    success = true
                                 } else {
-                                    chatDao.insertMessage(
-                                        ChatMessageEntity(
-                                            id = assistantMessageId,
-                                            sessionId = sessionId,
-                                            role = MessageRole.ASSISTANT,
-                                            text = finalResponse
-                                        )
-                                    )
+                                    throw IllegalStateException("AI generated an empty response.")
                                 }
-                                success = true
+                                // Trigger LTM generation outside the lock to avoid deadlock if called again,
+                                // but the trigger in sendMessage already does this.
                             } else {
-                                throw IllegalStateException("AI generated an empty response.")
+                                throw IllegalStateException("AI Engine is not ready.")
                             }
-                            
-                            generateLongTermMemory(sessionId)
-                        } else {
-                            throw IllegalStateException("AI Engine is not ready.")
-                        }
-                    } catch (e: Exception) {
-                        val isNotAlive = e.message?.contains("not alive", ignoreCase = true) == true
-                        if (isNotAlive && retryCount < maxRetries) {
-                            retryCount++
-                            delay(500) // Brief pause before retry
-                        } else {
-                            throw e // Bubble up for final error message
+                        } catch (e: Exception) {
+                            val isNotAlive = e.message?.contains("not alive", ignoreCase = true) == true
+                            if (isNotAlive && retryCount < maxRetries) {
+                                retryCount++
+                                delay(500)
+                            } else throw e
                         }
                     }
-                }
-                
-            } catch (e: Exception) {
-                if (retryCount >= maxRetries) {
-                    val errorMsg = "\n[Inference Error: ${e.message}. Please try again.]"
-                    val session = chatDao.getSessionById(sessionId)
-                    if (session?.isIncognito == true) {
-                        _volatileMessages.update { it + ChatMessage(id = assistantMessageId, role = MessageRole.ASSISTANT, text = errorMsg) }
-                    } else {
-                        chatDao.insertMessage(
-                            ChatMessageEntity(
-                                id = assistantMessageId,
-                                sessionId = sessionId,
-                                role = MessageRole.ASSISTANT,
-                                text = errorMsg
-                            )
-                        )
+                } catch (e: Exception) {
+                    if (retryCount >= maxRetries) {
+                        repository.insertMessage(sessionId, ChatMessage(id = assistantMessageId, role = MessageRole.ASSISTANT, text = "\n[Inference Error: ${e.message}]"))
                     }
+                } finally {
+                    _streamingMessage.value = null
+                    _isGenerating.value = false
+                    ModelPersistenceService.updateStatus(getApplication(), false)
                 }
-            } finally {
-                _streamingMessage.value = null
-                _isGenerating.value = false
-                ModelPersistenceService.updateStatus(getApplication(), false)
             }
         }
     }
 
     fun clearChatMemory(sessionId: String) {
         viewModelScope.launch {
-            chatDao.updateSessionMemory(sessionId, null)
-            if (currentSessionId == sessionId) {
-                inferenceSessionId = null
-            }
+            repository.updateSessionMemory(sessionId, null)
+            if (currentSessionId == sessionId) inferenceSessionId = null
         }
     }
 
-    fun estimateTokens(text: String): Int {
-        return gemmaInference.estimateTokens(text)
-    }
+    fun estimateTokens(text: String): Int = gemmaInference.estimateTokens(text)
 
     fun closeSession() {
         val sessionId = currentSessionId ?: return
-        
         stopGeneration()
         stopSpeaking()
         gemmaInference.cleanupMediaCache()
 
         viewModelScope.launch {
-            val session = chatDao.getSessionById(sessionId)
-            
-            // TRIPLE WIPE: RAM, Disk, and Engine
+            val session = repository.getSessionById(sessionId)
             if (session?.isIncognito == true) {
-                // 1. Wipe Disk (Room)
-                chatDao.deleteMessagesForSession(sessionId)
-                chatDao.deleteSession(session)
+                repository.clearMessagesForSession(sessionId)
+                repository.deleteSession(session)
             }
-            
-            // 2. Wipe RAM
-            _volatileMessages.value = emptyList()
             currentSessionId = null
             _currentSessionIdFlow.value = null
             inferenceSessionId = null
-            
-            // 3. Wipe Engine KV Cache
             gemmaInference.resetConversation()
         }
     }
@@ -855,15 +714,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val sessionId = currentSessionId ?: return
         viewModelScope.launch {
             stopGeneration()
-            chatDao.deleteMessagesForSession(sessionId)
-            chatDao.updateSessionMemory(sessionId, null)
+            repository.clearMessagesForSession(sessionId)
+            repository.updateSessionMemory(sessionId, null)
         }
     }
 
     override fun onCleared() {
-        // Cleanup incognito sessions on clear
         viewModelScope.launch {
-            chatDao.deleteIncognitoSessions()
+            repository.deleteIncognitoSessions()
         }
     }
 }

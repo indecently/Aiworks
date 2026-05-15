@@ -1,30 +1,43 @@
-AIworks v0.7.0.1
+AIworks v0.7.0.2
 Because your data deserves better than being Big Tech’s side chick.
+
 Introduction: Why This Damn Thing Exists
 AIworks was built for one glorious reason: to give you a genuinely powerful, 100% offline AI that doesn’t phone home, sell your soul, or treat your privacy like an optional DLC.
 
 This isn’t some polished corporate product from a 200-person engineering team. Nah. This is a regular dude rage-building in Android Studio with an army of AI agents because the current options are either expensive, creepy, or both. Every update is me learning on the fly and still somehow shipping something that feels premium as hell. You’re welcome.
 
-v0.7.0.1: I Cooked ts.
-This release is all about making the app feel buttery while we quietly make the internals actually good.
+v0.7.0.2: The Monster Session
+This update is massive. We ripped out the engine’s guts, standardized the feel, and finally made the internals as clean as the UI.
 
-Performance Gains (aka we stopped sucking):
+Haptic Engine Synchronization:
 
-Faster responses: Killed the brain-dead loop that kept resetting the engine like a drama queen. The AI now starts yapping almost immediately.
+Tactile everything: Every button, toggle, and slider now gives a crisp "VIRTUAL_KEY" haptic impact.
 
-Smarter memory: Implemented proper caching for your personal context so we’re not rebuilding Rome every single message.
+Long-press feedback: Recording and heavy processing now trigger distinct vibrations. It feels premium because it is.
 
-UI smoothness: Fixed the jank. Scrolling and tapping now feel like 60FPS silk instead of a PowerPoint presentation from 2007.
+Back gesture support: Swiping back actually feels like something now. No more guessing if the system registered your gesture.
 
-Bug Fixes (we touched grass):
+Engine Stabilization (aka we stopped crashing):
 
-Ghost chats exorcised: No more phantom dead screens haunting you after using the Digital Assistant.
+Peak memory management: Enforced a one-media-type rule (Image OR Audio) to prevent the GPU from having an absolute meltdown.
 
-Back button actually works: It now closes menus like a civilized human instead of rage-quitting the entire app.
+LMK prevention: Reverted the context buffer to 4,096 tokens. Turns out 8,192 was too much for the RAM to handle during multimodal peaks.
 
-Visual glow-up: Menu buttons upgraded to proper 56dp chads and perfectly aligned. Yes, we care about pixels.
+Responsive loading: Lowered initialization thread priority so the UI stays liquid while the 3.6GB model loads in the background.
 
-Settings moved: “Reset Onboarding” now lives in About Me where it belongs, and it actually does the thing when you smash it.
+Structural Modularization (The "Monster" Audit):
+
+The 500-line rule: Any file over 500 lines was taken to the shed and decomposed into logical modules.
+
+Cleaner architecture: Decomposed Onboarding, Isolates, and Settings into dedicated component packages.
+
+Prompt Architect: Extracted the AI's "brain" logic into a standalone utility to ensure LTM injection and instructions stay prioritized.
+
+Optimization Sweep:
+
+Sampling Parameters fixed: Temperature, Top-K, and Top-P are now fully reactive mid-session. Change them in settings, and the next response follows suit immediately.
+
+Import hygiene: Nuked a mountain of unused imports and orphaned code from the modularization move.
 
 Core Features (The Stuff That Actually Slaps)
 1. 100% Offline AI

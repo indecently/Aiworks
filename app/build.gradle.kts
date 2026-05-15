@@ -13,8 +13,8 @@ android {
         applicationId = "com.birkneo.Aiworks"
         minSdk = 35
         targetSdk = 37
-        versionCode = 7
-        versionName = "0.7.0.1"
+        versionCode = 8
+        versionName = "0.7.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         

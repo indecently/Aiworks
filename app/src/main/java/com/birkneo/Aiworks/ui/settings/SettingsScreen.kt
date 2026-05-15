@@ -1,5 +1,6 @@
 package com.birkneo.Aiworks.ui.settings
 
+import android.view.HapticFeedbackConstants
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -18,17 +19,16 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.birkneo.Aiworks.BuildConfig
 import com.birkneo.Aiworks.ai.ModelStatus
 import com.birkneo.Aiworks.di.GemmaContainer
 import com.birkneo.Aiworks.ui.chat.ChatViewModel
+import com.birkneo.Aiworks.ui.settings.components.*
 import com.birkneo.Aiworks.ui.theme.AppIcons
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,12 +37,16 @@ fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val view = LocalView.current
     val settingsManager = remember { GemmaContainer.getSettingsManager(context) }
     val scope = rememberCoroutineScope()
 
     val modelPath by settingsManager.modelPath.collectAsState(initial = "")
     val temperature by settingsManager.temperature.collectAsState(initial = 0.8)
     val maxTokens by settingsManager.maxTokens.collectAsState(initial = 4096)
+    val topK by settingsManager.topK.collectAsState(initial = 40)
+    val topP by settingsManager.topP.collectAsState(initial = 0.95)
+    val computeAccelerator by settingsManager.computeAccelerator.collectAsState(initial = "GPU")
     val modelStatus by viewModel.modelStatus.collectAsState()
     
     val lockEnabled by settingsManager.appLockEnabled.collectAsState(initial = false)
@@ -68,7 +72,10 @@ fun SettingsScreen(
             TopAppBar(
                 title = { Text("Global Settings", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        onBack()
+                    }) {
                         Icon(AppIcons.Welcome, contentDescription = "Back") // Using Welcome as back for now or similar
                     }
                 },
@@ -106,6 +113,7 @@ fun SettingsScreen(
                         Switch(
                             checked = lockEnabled,
                             onCheckedChange = { 
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                                 if (it && (lockPassword == null || lockPassword!!.isEmpty())) {
                                     showPasswordDialog = true
                                 } else {
@@ -191,7 +199,10 @@ fun SettingsScreen(
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Button(
-                            onClick = { launcher.launch(arrayOf("*/*")) },
+                            onClick = { 
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                launcher.launch(arrayOf("*/*")) 
+                            },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp),
                             enabled = modelStatus !is ModelStatus.Loading
@@ -203,7 +214,10 @@ fun SettingsScreen(
                         
                         if (modelStatus is ModelStatus.Ready) {
                             OutlinedButton(
-                                onClick = { viewModel.unloadModel() },
+                                onClick = { 
+                                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                    viewModel.unloadModel() 
+                                },
                                 modifier = Modifier.weight(1f),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
@@ -220,47 +234,78 @@ fun SettingsScreen(
             // Section: Inference
             SettingsSection(
                 icon = AppIcons.Tune,
-                title = "Inference Parameters"
+                title = "Sampling Parameters"
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Column {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(text = "Temperature", style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                text = String.format(Locale.US, "%.2f", temperature),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        Slider(
-                            value = temperature.toFloat(),
-                            onValueChange = { scope.launch { settingsManager.setTemperature(it.toDouble()) } },
-                            valueRange = 0f..2f
-                        )
-                    }
+                    InferenceParameterRow(
+                        title = "Temperature",
+                        description = "Controls randomness: higher values increase diversity.",
+                        value = temperature.toFloat(),
+                        valueRange = 0f..2f,
+                        onValueChange = { scope.launch { settingsManager.setTemperature(it.toDouble()) } }
+                    )
 
-                    Column {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(text = "Max Tokens", style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                text = "$maxTokens",
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        Slider(
-                            value = maxTokens.toFloat(),
-                            onValueChange = { scope.launch { settingsManager.setMaxTokens(it.toInt()) } },
-                            valueRange = 1024f..16384f,
-                            steps = 15
+                    InferenceParameterRow(
+                        title = "Max Tokens",
+                        description = "Maximum length of the generated response.",
+                        value = maxTokens.toFloat(),
+                        valueRange = 1024f..16384f,
+                        isInteger = true,
+                        onValueChange = { scope.launch { settingsManager.setMaxTokens(it.toInt()) } }
+                    )
+
+                    InferenceParameterRow(
+                        title = "Top-K",
+                        description = "Filters the top K most likely tokens.",
+                        value = topK.toFloat(),
+                        valueRange = 1f..128f,
+                        isInteger = true,
+                        onValueChange = { scope.launch { settingsManager.setTopK(it.toInt()) } }
+                    )
+
+                    InferenceParameterRow(
+                        title = "Top-P",
+                        description = "Cumulative probability cutoff for token selection.",
+                        value = topP.toFloat(),
+                        valueRange = 0f..1f,
+                        onValueChange = { scope.launch { settingsManager.setTopP(it.toDouble()) } }
+                    )
+                }
+            }
+
+            // Section: Hardware
+            SettingsSection(
+                icon = AppIcons.Model,
+                title = "Hardware & Performance"
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Compute Accelerator", style = MaterialTheme.typography.bodyMedium)
+                    Text("Target specific hardware for inference. Changes take effect on next model load.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                    
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = computeAccelerator == "CPU",
+                            onClick = { 
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                scope.launch { settingsManager.setComputeAccelerator("CPU") } 
+                            },
+                            label = { Text("CPU") },
+                            leadingIcon = if (computeAccelerator == "CPU") {
+                                { Icon(AppIcons.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        FilterChip(
+                            selected = computeAccelerator == "GPU",
+                            onClick = { 
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                scope.launch { settingsManager.setComputeAccelerator("GPU") } 
+                            },
+                            label = { Text("GPU") },
+                            leadingIcon = if (computeAccelerator == "GPU") {
+                                { Icon(AppIcons.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                            } else null,
+                            shape = RoundedCornerShape(12.dp)
                         )
                     }
                 }
@@ -282,13 +327,14 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(text = "Version", style = MaterialTheme.typography.bodySmall)
-                        Text(text = "${BuildConfig.VERSION_NAME} (Tinbucktwo)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        Text(text = "0.7.0.2 (Tinbuckthree)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
                     
                     Button(
                         onClick = { 
+                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                             scope.launch { 
                                 settingsManager.setOnboardingCompleted(false)
                                 // Clear model path to ensure it goes back to onboarding
@@ -320,100 +366,6 @@ fun SettingsScreen(
                     }
                 }
             )
-        }
-    }
-}
-
-@Composable
-fun CreatePasswordDialog(
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
-) {
-    var pass by remember { mutableStateOf("") }
-    var confirm by remember { mutableStateOf("") }
-    
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Create App Password") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = pass,
-                    onValueChange = { pass = it },
-                    label = { Text("New Password") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true,
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password)
-                )
-                OutlinedTextField(
-                    value = confirm,
-                    onValueChange = { confirm = it },
-                    label = { Text("Confirm Password") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    singleLine = true,
-                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
-                    isError = confirm.isNotEmpty() && pass != confirm,
-                    supportingText = {
-                        if (confirm.isNotEmpty() && pass != confirm) {
-                            Text("Passwords do not match")
-                        }
-                    }
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(pass) },
-                enabled = pass.length >= 4 && pass == confirm
-            ) {
-                Text("Enable Protection")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-@Composable
-fun SettingsSection(
-    icon: ImageVector,
-    title: String,
-    content: @Composable () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.width(12.dp))
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-            content()
         }
     }
 }

@@ -14,5 +14,6 @@ data class ChatSession(
     val persona: String? = null,
     val imageUri: String? = null,
     val backgroundUri: String? = null,
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val isReasoningMode: Boolean = false
 )

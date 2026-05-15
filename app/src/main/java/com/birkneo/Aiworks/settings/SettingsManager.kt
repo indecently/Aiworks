@@ -24,6 +24,9 @@ class SettingsManager(private val context: Context) {
         val ONBOARDING_COMPLETED = androidx.datastore.preferences.core.booleanPreferencesKey("onboarding_completed")
         val APP_LOCK_ENABLED = booleanPreferencesKey("app_lock_enabled")
         val APP_LOCK_PASSWORD = stringPreferencesKey("app_lock_password")
+        val TOP_K = intPreferencesKey("top_k")
+        val TOP_P = doublePreferencesKey("top_p")
+        val COMPUTE_ACCELERATOR = stringPreferencesKey("compute_accelerator")
     }
 
     val modelPath: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -36,6 +39,18 @@ class SettingsManager(private val context: Context) {
 
     val maxTokens: Flow<Int> = context.dataStore.data.map { preferences ->
         preferences[MAX_TOKENS] ?: 4096
+    }
+
+    val topK: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[TOP_K] ?: 40
+    }
+
+    val topP: Flow<Double> = context.dataStore.data.map { preferences ->
+        preferences[TOP_P] ?: 0.95
+    }
+
+    val computeAccelerator: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[COMPUTE_ACCELERATOR] ?: "GPU"
     }
 
     val customInstructions: Flow<String> = context.dataStore.data.map { preferences ->
@@ -69,6 +84,24 @@ class SettingsManager(private val context: Context) {
     suspend fun setMaxTokens(maxTokens: Int) {
         context.dataStore.edit { preferences ->
             preferences[MAX_TOKENS] = maxTokens
+        }
+    }
+
+    suspend fun setTopK(topK: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[TOP_K] = topK
+        }
+    }
+
+    suspend fun setTopP(topP: Double) {
+        context.dataStore.edit { preferences ->
+            preferences[TOP_P] = topP
+        }
+    }
+
+    suspend fun setComputeAccelerator(accelerator: String) {
+        context.dataStore.edit { preferences ->
+            preferences[COMPUTE_ACCELERATOR] = accelerator
         }
     }
 

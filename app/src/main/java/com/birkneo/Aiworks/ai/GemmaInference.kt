@@ -56,8 +56,9 @@ class GemmaInference(private val context: Context) {
     private fun createExecutorService() = Executors.newSingleThreadExecutor(object : ThreadFactory {
         override fun newThread(r: Runnable): Thread {
             return Thread(r, "gemma-inference-thread").apply {
-                // Adjust to BACKGROUND priority to ensure UI thread is never starved
-                priority = Thread.MIN_PRIORITY
+                // Adjust to a stable background priority (3)
+                // MIN_PRIORITY (1) can cause starvation/timeouts on some OS versions
+                priority = 3 
             }
         }
     })
@@ -66,6 +67,9 @@ class GemmaInference(private val context: Context) {
         modelPathOrUri: String,
         temperature: Double = 0.8,
         maxTokens: Int = 512,
+        topK: Int = 40,
+        topP: Double = 0.95,
+        useGpu: Boolean = true,
         systemInstruction: String? = null,
         onProgress: (Float) -> Unit = {}
     ): ModelStatus = loadMutex.withLock {
@@ -82,9 +86,9 @@ class GemmaInference(private val context: Context) {
                     return@withContext ModelStatus.Error("Failed to resolve model path from URI")
                 }
 
-                // Skip if already loaded and same path
+                // Skip if already loaded and same path (Re-init conversation with new params)
                 if (engine != null && finalPath == currentModelPath) {
-                    resetConversation(temperature, maxTokens, systemInstruction)
+                    resetConversation(temperature, maxTokens, topK, topP, systemInstruction)
                     return@withContext ModelStatus.Ready
                 }
 
@@ -99,19 +103,26 @@ class GemmaInference(private val context: Context) {
                 // Close existing session before re-init
                 closeInternal()
 
+                // OPTIMIZATION: Check thermal status before selecting backend
+                val thermalStatus = powerManager.currentThermalStatus
+                val backendToUse = if (useGpu && thermalStatus < PowerManager.THERMAL_STATUS_SEVERE) {
+                    Backend.GPU()
+                } else {
+                    Backend.CPU()
+                }
+
                 val config = EngineConfig(
                     modelPath = finalPath,
-                    backend = Backend.GPU(),
-                    visionBackend = Backend.GPU(),
-                    audioBackend = Backend.CPU(),
+                    backend = backendToUse,
+                    visionBackend = backendToUse,
+                    audioBackend = Backend.CPU(), // Audio usually remains on CPU for stability
                     cacheDir = context.cacheDir.path,
-                    maxNumTokens = 4096 // Reduced for stability during cold starts
+                    maxNumTokens = 4096 // STABILIZED: Reduced to prevent LowMemoryKiller crashes
                 )
 
-                // Try GPU first
-                val result = withContext(inferenceDispatcher) {
+                val initResult = withContext(inferenceDispatcher) {
                     try {
-                        Process.setThreadPriority(Process.THREAD_PRIORITY_FOREGROUND)
+                        Process.setThreadPriority(Process.THREAD_PRIORITY_DEFAULT)
                         val newEngine = Engine(config)
                         newEngine.initialize()
                         engine = newEngine
@@ -122,37 +133,14 @@ class GemmaInference(private val context: Context) {
                     }
                 }
 
-                if (!result) {
-                    // FALLBACK TO CPU: GPU might fail if triggered from assistant overlay or background
-                    val cpuConfig = config.copy(
-                        backend = Backend.CPU(),
-                        visionBackend = Backend.CPU()
-                    )
-                    withContext(inferenceDispatcher) {
-                        try {
-                            val newEngine = Engine(cpuConfig)
-                            newEngine.initialize()
-                            engine = newEngine
-                        } catch (e: Exception) {
-                            currentModelPath = null
-                            return@withContext ModelStatus.Error("AI Engine initialization failed: ${e.message}")
-                        }
-                    }
+                if (!initResult) {
+                    currentModelPath = null
+                    return@withContext ModelStatus.Error("AI Engine initialization failed on target backend.")
                 }
 
                 currentModelPath = finalPath
 
-                val conversationConfig = ConversationConfig(
-                    systemInstruction = systemInstruction?.let { Contents.of(it) },
-                    samplerConfig = SamplerConfig(
-                        temperature = temperature,
-                        topK = 40,
-                        topP = 0.95,
-                        seed = 0
-                    )
-                )
-
-                conversation = engine?.createConversation(conversationConfig)
+                resetConversation(temperature, maxTokens, topK, topP, systemInstruction)
                 ModelStatus.Ready
             } catch (e: Exception) {
                 currentModelPath = null
@@ -316,6 +304,8 @@ class GemmaInference(private val context: Context) {
     suspend fun resetConversation(
         temperature: Double = 0.8,
         maxTokens: Int = 512,
+        topK: Int = 40,
+        topP: Double = 0.95,
         systemInstruction: String? = null
     ) = withContext(inferenceDispatcher) {
         conversation?.close()
@@ -326,8 +316,8 @@ class GemmaInference(private val context: Context) {
                 systemInstruction = systemInstruction?.let { Contents.of(it) },
                 samplerConfig = SamplerConfig(
                     temperature = temperature,
-                    topK = 40,
-                    topP = 0.95,
+                    topK = topK,
+                    topP = topP,
                     seed = 0
                 )
             )
@@ -429,6 +419,8 @@ class GemmaInference(private val context: Context) {
     }
 
     fun getLoadedModelPath(): String? = currentModelPath
+
+    fun isConversationActive(): Boolean = conversation != null
 
     suspend fun close() = loadMutex.withLock {
         closeInternal()

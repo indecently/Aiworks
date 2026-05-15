@@ -59,6 +59,9 @@ interface ChatDao {
     @Query("UPDATE chat_sessions SET isIncognito = :isIncognito WHERE id = :sessionId")
     suspend fun updateSessionIncognito(sessionId: String, isIncognito: Boolean)
 
+    @Query("UPDATE chat_sessions SET isReasoningMode = :enabled WHERE id = :sessionId")
+    suspend fun updateSessionReasoning(sessionId: String, enabled: Boolean)
+
     @Query("DELETE FROM chat_messages WHERE id = :messageId")
     suspend fun deleteMessageById(messageId: String)
 

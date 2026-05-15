@@ -8,7 +8,7 @@ import com.birkneo.Aiworks.data.dao.ChatDao
 import com.birkneo.Aiworks.data.entity.ChatMessageEntity
 import com.birkneo.Aiworks.data.entity.ChatSession
 
-@Database(entities = [ChatSession::class, ChatMessageEntity::class], version = 6, exportSchema = false)
+@Database(entities = [ChatSession::class, ChatMessageEntity::class], version = 7, exportSchema = false)
 abstract class ChatDatabase : RoomDatabase() {
     abstract fun chatDao(): ChatDao
 
@@ -22,7 +22,9 @@ abstract class ChatDatabase : RoomDatabase() {
                     context.applicationContext,
                     ChatDatabase::class.java,
                     "chat_database"
-                ).build()
+                )
+                .fallbackToDestructiveMigration()
+                .build()
                 INSTANCE = instance
                 instance
             }
