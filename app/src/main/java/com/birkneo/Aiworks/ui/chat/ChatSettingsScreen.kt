@@ -27,6 +27,7 @@ import coil.compose.AsyncImage
 import com.birkneo.Aiworks.data.database.ChatDatabase
 import com.birkneo.Aiworks.ui.settings.components.SettingsSection
 import com.birkneo.Aiworks.ui.theme.AppIcons
+import com.birkneo.Aiworks.ui.chat.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -99,29 +100,22 @@ fun ChatSettingsScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Chat Settings", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                        onBack()
-                    }) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
-                    }
-                }
-            )
-        }
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0)
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .background(MaterialTheme.colorScheme.background),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
-            // Privacy Section
+        Box(modifier = Modifier.fillMaxSize()) {
+            // 1. Scrollable Content - Extends to top
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                // Header Space
+                item { Spacer(modifier = Modifier.height(100.dp)) }
+
+                // Privacy Section
             item {
                 SettingsSection(icon = AppIcons.Palette, title = "Privacy & Visibility") {
                     Row(
@@ -197,10 +191,13 @@ fun ChatSettingsScreen(
                                 Text("Chat Picture", style = MaterialTheme.typography.titleSmall)
                                 Text("Visible on the home screen", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                             }
-                            Button(onClick = { 
-                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                pictureLauncher.launch("image/*") 
-                            }) { Text("Change") }
+                            Button(
+                                onClick = { 
+                                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                    pictureLauncher.launch("image/*") 
+                                },
+                                shape = RoundedCornerShape(24.dp) // Pill Button
+                            ) { Text("Change") }
                         }
 
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -221,10 +218,13 @@ fun ChatSettingsScreen(
                                 Text("Chat Background", style = MaterialTheme.typography.titleSmall)
                                 Text("Personalize the chat window", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
                             }
-                            Button(onClick = { 
-                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                backgroundLauncher.launch("image/*") 
-                            }) { Text("Set") }
+                            Button(
+                                onClick = { 
+                                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                    backgroundLauncher.launch("image/*") 
+                                },
+                                shape = RoundedCornerShape(24.dp) // Pill Button
+                            ) { Text("Set") }
                         }
                     }
                 }
@@ -243,7 +243,7 @@ fun ChatSettingsScreen(
                         modifier = Modifier.fillMaxWidth(),
                         minLines = 3,
                         maxLines = 5,
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(24.dp) // Pill Shape Input
                     )
                 }
             }
@@ -283,7 +283,7 @@ fun ChatSettingsScreen(
                 itemsIndexed(memoryItems) { index, item ->
                     Surface(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(24.dp), // Pill Shape Item
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                         tonalElevation = 1.dp
                     ) {
@@ -336,11 +336,12 @@ fun ChatSettingsScreen(
             }
         }
 
-        memoryToEdit?.let { initialText ->
+        if (memoryToEdit != null) {
+            val initialText = memoryToEdit!!
             EditMemoryDialog(
                 initialText = initialText,
                 onDismiss = { memoryToEdit = null; memoryToEditIndex = -1 },
-                onConfirm = { updatedText ->
+                onConfirm = { updatedText: String ->
                     val newList = memoryItems.toMutableList().apply { 
                         if (memoryToEditIndex in indices) set(memoryToEditIndex, updatedText)
                     }
@@ -349,7 +350,50 @@ fun ChatSettingsScreen(
                 }
             )
         }
+
+        // 2. Floating Header Capsule
+        Surface(
+            modifier = Modifier
+                .statusBarsPadding()
+                .padding(16.dp)
+                .align(Alignment.TopStart),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+            border = androidx.compose.foundation.BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+            ),
+            tonalElevation = 2.dp
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                IconButton(
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        onBack()
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Rounded.ArrowBack, 
+                        contentDescription = "Back",
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Chat Settings",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
     }
+}
 }
 
 @Composable
@@ -358,8 +402,25 @@ fun EditMemoryDialog(initialText: String, onDismiss: () -> Unit, onConfirm: (Str
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Edit Memory Snippet") },
-        text = { OutlinedTextField(value = text, onValueChange = { text = it }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp)) },
-        confirmButton = { Button(onClick = { onConfirm(text) }) { Text("Update") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        text = { 
+            OutlinedTextField(
+                value = text, 
+                onValueChange = { text = it }, 
+                modifier = Modifier.fillMaxWidth(), 
+                shape = RoundedCornerShape(24.dp) // Pill Shape Input
+            ) 
+        },
+        confirmButton = { 
+            Button(
+                onClick = { onConfirm(text) },
+                shape = RoundedCornerShape(24.dp)
+            ) { Text("Update") } 
+        },
+        dismissButton = { 
+            TextButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(24.dp)
+            ) { Text("Cancel") } 
+        }
     )
 }

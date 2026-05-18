@@ -9,6 +9,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -21,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -34,6 +36,19 @@ import com.birkneo.Aiworks.ui.theme.AppIcons
 
 @Composable
 fun StreamingPlaceholder() {
+    val transition = rememberInfiniteTransition(label = "dots")
+    val dotColor = MaterialTheme.colorScheme.primary
+    
+    val animValue by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1200),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "dot_animation"
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -43,7 +58,10 @@ fun StreamingPlaceholder() {
         Box(
             modifier = Modifier
                 .size(28.dp)
-                .clip(CircleShape)
+                .graphicsLayer { 
+                    clip = true
+                    shape = CircleShape
+                }
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center
         ) {
@@ -56,26 +74,26 @@ fun StreamingPlaceholder() {
         }
         Spacer(modifier = Modifier.width(12.dp))
         
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            val transition = rememberInfiniteTransition(label = "dots")
-            repeat(3) { index ->
-                val opacity by transition.animateFloat(
-                    initialValue = 0.3f,
-                    targetValue = 1f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(600, delayMillis = index * 200),
-                        repeatMode = RepeatMode.Reverse
+        Canvas(modifier = Modifier.size(width = 32.dp, height = 8.dp)) {
+            val dotRadius = 4.dp.toPx()
+            val dotSpacing = 4.dp.toPx()
+            
+            for (i in 0..2) {
+                val phase = (animValue - i * 0.2f).let { if (it < 0) it + 1f else it }
+                val alphaValue = if (phase < 0.5f) {
+                    0.3f + (phase / 0.5f) * 0.7f
+                } else {
+                    1f - ((phase - 0.5f) / 0.5f) * 0.7f
+                }.coerceIn(0.3f, 1f)
+                
+                drawCircle(
+                    color = dotColor,
+                    radius = dotRadius,
+                    center = androidx.compose.ui.geometry.Offset(
+                        x = dotRadius + i * (dotRadius * 2 + dotSpacing),
+                        y = size.height / 2f
                     ),
-                    label = "opacity"
-                )
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary.copy(alpha = opacity))
+                    alpha = alphaValue
                 )
             }
         }
@@ -111,7 +129,6 @@ fun MessageBubble(
         MaterialTheme.colorScheme.onSurfaceVariant
     }
 
-    // High-contrast background for audio in non-user bubbles
     val audioContainerColor = if (isUser) {
         containerColor.copy(alpha = 0.9f)
     } else {
@@ -133,7 +150,10 @@ fun MessageBubble(
                 Box(
                     modifier = Modifier
                         .size(28.dp)
-                        .clip(CircleShape)
+                        .graphicsLayer { 
+                            clip = true
+                            shape = CircleShape
+                        }
                         .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center
                 ) {
@@ -147,77 +167,82 @@ fun MessageBubble(
                 Spacer(modifier = Modifier.width(8.dp))
             }
 
-            // Message Body Container
-            Column(
+            Surface(
                 modifier = Modifier
                     .widthIn(max = 300.dp, min = if (message.isThinking) 130.dp else 40.dp)
                     .defaultMinSize(minHeight = if (message.isThinking) 56.dp else 0.dp)
-                    .clip(
-                        RoundedCornerShape(
-                            topStart = 20.dp,
-                            topEnd = 20.dp,
-                            bottomStart = if (isUser) 20.dp else 4.dp,
-                            bottomEnd = if (isUser) 4.dp else 20.dp
-                        )
-                    )
-                    .background(containerColor)
-                    .animateContentSize()
-                    .combinedClickable(
-                        onClick = {},
-                        onLongClick = onLongClick
-                    )
-                    .padding(12.dp)
+                    .animateContentSize(),
+                shape = RoundedCornerShape(
+                    topStart = 20.dp,
+                    topEnd = 20.dp,
+                    bottomStart = if (isUser) 20.dp else 4.dp,
+                    bottomEnd = if (isUser) 4.dp else 20.dp
+                ),
+                color = containerColor,
+                border = androidx.compose.foundation.BorderStroke(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                ),
+                tonalElevation = 0.dp
             ) {
-                if (message.isThinking) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                    ) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = contentColor.copy(alpha = 0.8f)
+                Column(
+                    modifier = Modifier
+                        .combinedClickable(
+                            onClick = {},
+                            onLongClick = onLongClick
                         )
-                        Text(
-                            text = "Thinking...",
-                            color = contentColor.copy(alpha = 0.8f),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                } else {
-                    message.imageUri?.let { uri ->
-                        AsyncImage(
-                            model = uri,
-                            contentDescription = "Attached Image",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(220.dp)
-                                .clip(RoundedCornerShape(12.dp)),
-                            contentScale = ContentScale.Crop
-                        )
-                        if (message.text.isNotBlank()) Spacer(modifier = Modifier.height(10.dp))
-                    }
-                    
-                    message.audioUri?.let { uri ->
-                        AudioPlayer(uri = uri, contentColor = contentColor, containerColor = audioContainerColor)
-                        if (message.text.isNotBlank()) Spacer(modifier = Modifier.height(8.dp))
-                    }
+                        .padding(12.dp)
+                ) {
+                    if (message.isThinking) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = contentColor.copy(alpha = 0.8f)
+                            )
+                            Text(
+                                text = "Thinking...",
+                                color = contentColor.copy(alpha = 0.8f),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    } else {
+                        message.imageUri?.let { uri ->
+                            AsyncImage(
+                                model = uri,
+                                contentDescription = "Attached Image",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(220.dp)
+                                    .clip(RoundedCornerShape(12.dp)),
+                                contentScale = ContentScale.Crop
+                            )
+                            if (message.text.isNotBlank()) Spacer(modifier = Modifier.height(10.dp))
+                        }
+                        
+                        message.audioUri?.let { uri ->
+                            AudioPlayer(uri = uri, contentColor = contentColor, containerColor = audioContainerColor)
+                            if (message.text.isNotBlank()) Spacer(modifier = Modifier.height(8.dp))
+                        }
 
-                    if (message.text.isNotBlank()) {
-                        Text(
-                            text = message.text,
-                            color = contentColor,
-                            style = MaterialTheme.typography.bodyLarge,
-                            lineHeight = 22.sp
-                        )
+                        if (message.text.isNotBlank()) {
+                            Text(
+                                text = message.text,
+                                color = contentColor,
+                                style = MaterialTheme.typography.bodyLarge,
+                                lineHeight = 22.sp
+                            )
+                        }
                     }
                 }
             }
         }
 
-        // Action Buttons
         if (message.text.isNotBlank() && !message.isStreaming) {
             Row(
                 modifier = Modifier

@@ -19,9 +19,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -49,15 +52,15 @@ fun ChatScreen(
     onNavigateToSettings: () -> Unit
 ) {
     val context = LocalContext.current
-    val messages by viewModel.messages.collectAsState()
-    val streamingMessage by viewModel.streamingMessage.collectAsState()
-    val modelStatus by viewModel.modelStatus.collectAsState()
-    val isGenerating by viewModel.isGenerating.collectAsState()
-    val isRecording by viewModel.isRecording.collectAsState()
-    val recordingAmplitude by viewModel.recordingAmplitude.collectAsState()
-    val isCompressing by viewModel.isCompressingContext.collectAsState()
-    val pendingImage by viewModel.pendingImageUri.collectAsState()
-    val pendingAudio by viewModel.pendingAudioUri.collectAsState()
+    val messages by viewModel.messages.collectAsStateWithLifecycle()
+    val streamingMessage by viewModel.streamingMessage.collectAsStateWithLifecycle()
+    val modelStatus by viewModel.modelStatus.collectAsStateWithLifecycle()
+    val isGenerating by viewModel.isGenerating.collectAsStateWithLifecycle()
+    val isRecording by viewModel.isRecording.collectAsStateWithLifecycle()
+    val recordingAmplitude by viewModel.recordingAmplitude.collectAsStateWithLifecycle()
+    val isCompressing by viewModel.isCompressingContext.collectAsStateWithLifecycle()
+    val pendingImage by viewModel.pendingImageUri.collectAsStateWithLifecycle()
+    val pendingAudio by viewModel.pendingAudioUri.collectAsStateWithLifecycle()
     
     val view = LocalView.current
     val clipboardManager = LocalClipboardManager.current
@@ -139,12 +142,10 @@ fun ChatScreen(
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
-                alpha = 0.4f
-            )
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.5f))
+                colorFilter = ColorFilter.tint(
+                    MaterialTheme.colorScheme.background.copy(alpha = 0.6f),
+                    BlendMode.SrcOver
+                )
             )
         }
 
@@ -169,7 +170,11 @@ fun ChatScreen(
                         Surface(
                             shape = RoundedCornerShape(24.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                            tonalElevation = 2.dp
+                            tonalElevation = 2.dp,
+                            border = androidx.compose.foundation.BorderStroke(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                            )
                         ) {
                             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                                 Text(
@@ -188,7 +193,11 @@ fun ChatScreen(
                         Surface(
                             shape = RoundedCornerShape(24.dp),
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                            tonalElevation = 2.dp
+                            tonalElevation = 2.dp,
+                            border = androidx.compose.foundation.BorderStroke(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                            )
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,

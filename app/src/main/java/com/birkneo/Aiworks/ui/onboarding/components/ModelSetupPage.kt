@@ -32,76 +32,79 @@ fun ModelSetupPage(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 40.dp, vertical = 24.dp),
+            .padding(horizontal = 32.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Box(
-            modifier = Modifier
-                .size(100.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.secondaryContainer),
-            contentAlignment = Alignment.Center
+        Surface(
+            modifier = Modifier.size(120.dp),
+            shape = RoundedCornerShape(40.dp),
+            color = MaterialTheme.colorScheme.secondaryContainer,
+            shadowElevation = 2.dp
         ) {
-            Icon(
-                AppIcons.Model,
-                contentDescription = null,
-                modifier = Modifier.size(48.dp),
-                tint = MaterialTheme.colorScheme.onSecondaryContainer
-            )
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    AppIcons.Model,
+                    contentDescription = null,
+                    modifier = Modifier.size(56.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                )
+            }
         }
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(40.dp))
         Text(
             text = "Load Your AI Engine",
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.ExtraBold,
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
             text = "To continue, you can select a compatible .bin or .litertlm file from your storage. or just skip to do it later.",
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            lineHeight = 22.sp
+            lineHeight = 26.sp
         )
         
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(32.dp))
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
-                .padding(16.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            Icon(
-                AppIcons.Info,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp).padding(top = 2.dp)
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = "This app is optimized specifically for Gemma 4 E2B.\n\nOther .litertlm models may load, but image and audio understanding, and overall performance are tuned for Gemma 4 and agentic multimodel AI only.",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                lineHeight = 16.sp
-            )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        Card(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            )
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f))
+        ) {
+            Row(
+                modifier = Modifier.padding(20.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Icon(
+                    AppIcons.Info,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp).padding(top = 2.dp)
+                )
+                Spacer(modifier = Modifier.width(16.dp))
+                Text(
+                    text = "This app is optimized specifically for Gemma 4 E2B.\n\nOther .litertlm models may load, but image and audio understanding, and overall performance are tuned for Gemma 4 and agentic multimodel AI only.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 18.sp
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(32.dp))
+        
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(32.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            shadowElevation = 1.dp
         ) {
             Column(
-                modifier = Modifier.padding(32.dp),
+                modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 if (modelStatus is ModelStatus.Ready) {
@@ -127,13 +130,14 @@ fun ModelSetupPage(
                             onLoadClick()
                         },
                         enabled = modelStatus !is ModelStatus.Loading,
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.height(50.dp).fillMaxWidth(),
-                        contentPadding = PaddingValues(horizontal = 16.dp)
+                        shape = RoundedCornerShape(28.dp), // Pill Shape
+                        modifier = Modifier.height(60.dp).fillMaxWidth(),
+                        contentPadding = PaddingValues(horizontal = 24.dp),
+                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                     ) {
                         Icon(AppIcons.Upload, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text("Select Model File", fontWeight = FontWeight.Bold)
+                        Text("Select Model File", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     }
                 }
 

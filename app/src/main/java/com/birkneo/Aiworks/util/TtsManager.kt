@@ -1,13 +1,25 @@
 package com.birkneo.Aiworks.util
 
 import android.content.Context
+import android.provider.Settings
 import android.speech.tts.TextToSpeech
 
 import java.util.Locale
 
 class TtsManager(context: Context) : TextToSpeech.OnInitListener {
-    private var tts: TextToSpeech? = TextToSpeech(context.applicationContext, this)
+    private var tts: TextToSpeech? = null
     private var isInitialized = false
+
+    init {
+        // Initialize TTS with the system's preferred engine explicitly to ensure it respects user settings
+        // instead of potentially defaulting to a hardcoded or internal fallback.
+        val defaultEngine = Settings.Secure.getString(context.contentResolver, "tts_default_synth")
+        tts = if (defaultEngine != null) {
+            TextToSpeech(context.applicationContext, this, defaultEngine)
+        } else {
+            TextToSpeech(context.applicationContext, this)
+        }
+    }
 
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {

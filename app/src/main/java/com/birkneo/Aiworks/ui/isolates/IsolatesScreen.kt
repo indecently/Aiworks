@@ -26,7 +26,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.birkneo.Aiworks.data.entity.ChatSession
-import com.birkneo.Aiworks.ui.chat.ChatViewModel
+import com.birkneo.Aiworks.ui.chat.*
 import com.birkneo.Aiworks.ui.isolates.components.*
 import com.birkneo.Aiworks.ui.theme.AppIcons
 import kotlinx.coroutines.delay
@@ -316,7 +316,8 @@ fun IsolatesScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .background(MaterialTheme.colorScheme.background),
-            contentPadding = PaddingValues(16.dp)
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             // Favorites Section
             if (favoriteSessions.isNotEmpty() && searchQuery.isEmpty()) {
@@ -346,7 +347,7 @@ fun IsolatesScreen(
                     if (searchQuery.isEmpty()) "Recent Chats" else "Search Results",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.padding(bottom = 12.dp, start = 4.dp)
+                    modifier = Modifier.padding(bottom = 4.dp, start = 4.dp) // Reduced bottom padding
                 )
             }
 
@@ -388,7 +389,6 @@ fun IsolatesScreen(
                             selectedSessionIds.add(session.id)
                         }
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
                 }
             }
         }

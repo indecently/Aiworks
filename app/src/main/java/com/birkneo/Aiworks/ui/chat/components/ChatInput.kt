@@ -21,6 +21,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
@@ -88,7 +89,12 @@ fun WaveformVisualizer(
         redrawTrigger++
     }
 
-    Canvas(modifier = modifier) {
+    Canvas(
+        modifier = modifier.graphicsLayer { 
+            // Hardware accelerate the waveform to ensure 60FPS during UI heavy tasks
+            renderEffect = null
+        }
+    ) {
         // Access redrawTrigger to ensure composition is aware of the change
         val _trigger = redrawTrigger
         val barWidth = size.width / barCount
@@ -134,7 +140,11 @@ fun ChatInput(
             color = MaterialTheme.colorScheme.surfaceVariant,
             shadowElevation = 8.dp,
             tonalElevation = 4.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            border = androidx.compose.foundation.BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+            )
         ) {
             Row(
                 modifier = Modifier
@@ -160,7 +170,11 @@ fun ChatInput(
                 Surface(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(28.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f)
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    )
                 ) {
                     Box(modifier = Modifier.fillMaxWidth()) {
                         if (isRecording) {

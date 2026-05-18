@@ -1,5 +1,7 @@
 package com.birkneo.Aiworks.ui.onboarding
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -60,52 +62,59 @@ fun OnboardingScreen(
     Scaffold(
         bottomBar = {
             Surface(
-                tonalElevation = 1.dp,
-                shadowElevation = 8.dp
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp,
+                color = MaterialTheme.colorScheme.background
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
-                        .padding(24.dp),
+                        .padding(horizontal = 32.dp, vertical = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Pager Indicator
+                    // Pager Indicator - Optimized Pill Design
                     Row(
                         modifier = Modifier.padding(bottom = 24.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         repeat(6) { iteration ->
-                            val color = if (pagerState.currentPage == iteration) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                            val isSelected = pagerState.currentPage == iteration
+                            val width by androidx.compose.animation.core.animateDpAsState(
+                                targetValue = if (isSelected) 32.dp else 8.dp,
+                                animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)
+                            )
+                            val color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
                             Box(
                                 modifier = Modifier
+                                    .height(8.dp)
+                                    .width(width)
                                     .clip(CircleShape)
                                     .background(color)
-                                    .size(if (pagerState.currentPage == iteration) 12.dp else 8.dp)
                             )
                         }
                     }
 
-                    // Buttons
+                    // Buttons - Redesigned as modern pills
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Left placeholder or Skip
                         if (pagerState.currentPage < 5) {
                             TextButton(
                                 onClick = {
                                     view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                                     onComplete()
                                 },
-                                modifier = Modifier.height(48.dp)
+                                modifier = Modifier.height(56.dp),
+                                shape = RoundedCornerShape(28.dp)
                             ) {
-                                Text("Skip")
+                                Text("Skip", style = MaterialTheme.typography.labelLarge)
                             }
                         } else {
-                            Spacer(modifier = Modifier.width(48.dp))
+                            Spacer(modifier = Modifier.width(56.dp))
                         }
 
                         val nextEnabled = when (pagerState.currentPage) {
@@ -118,7 +127,6 @@ fun OnboardingScreen(
                             onClick = {
                                 view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                                 if (pagerState.currentPage < 5) {
-                                    // If leaving security page, persist settings
                                     if (pagerState.currentPage == 4) {
                                         scope.launch {
                                             settingsManager.setAppLockEnabled(isLockEnabled)
@@ -133,9 +141,14 @@ fun OnboardingScreen(
                                 }
                             },
                             enabled = nextEnabled,
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier.height(56.dp).padding(horizontal = 8.dp),
-                            contentPadding = PaddingValues(horizontal = 24.dp)
+                            shape = RoundedCornerShape(28.dp), // Max Pill Shape
+                            modifier = Modifier.height(56.dp),
+                            contentPadding = PaddingValues(horizontal = 32.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                         ) {
                             Text(
                                 if (pagerState.currentPage == 5) "Lets go" else "Next",
@@ -156,8 +169,9 @@ fun OnboardingScreen(
             state = pagerState,
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding),
-            userScrollEnabled = false // Manual navigation for validation safety
+                .padding(padding)
+                .background(MaterialTheme.colorScheme.background),
+            userScrollEnabled = false
         ) { page ->
             when (page) {
                 0 -> OnboardingPage(

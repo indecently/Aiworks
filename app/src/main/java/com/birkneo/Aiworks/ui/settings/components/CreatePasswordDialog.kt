@@ -33,7 +33,7 @@ fun CreatePasswordDialog(
                     onValueChange = { pass = it },
                     label = { Text("New Password") },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(24.dp), // Pill Shape Input
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
@@ -43,7 +43,7 @@ fun CreatePasswordDialog(
                     onValueChange = { confirm = it },
                     label = { Text("Confirm Password") },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(24.dp), // Pill Shape Input
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -62,16 +62,20 @@ fun CreatePasswordDialog(
                     view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                     onConfirm(pass) 
                 },
-                enabled = pass.length >= 4 && pass == confirm
+                enabled = pass.length >= 4 && pass == confirm,
+                shape = RoundedCornerShape(24.dp) // Pill Button
             ) {
                 Text("Enable Protection")
             }
         },
         dismissButton = {
-            TextButton(onClick = {
-                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                onDismiss()
-            }) {
+            TextButton(
+                onClick = {
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    onDismiss()
+                },
+                shape = RoundedCornerShape(24.dp) // Pill Button
+            ) {
                 Text("Cancel")
             }
         }

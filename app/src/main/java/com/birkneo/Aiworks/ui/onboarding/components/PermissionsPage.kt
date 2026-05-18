@@ -36,20 +36,21 @@ fun PermissionsPage() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 40.dp, vertical = 24.dp),
+            .padding(horizontal = 32.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Surface(
-            modifier = Modifier.size(120.dp),
-            shape = RoundedCornerShape(32.dp),
-            color = MaterialTheme.colorScheme.primaryContainer
+            modifier = Modifier.size(140.dp),
+            shape = RoundedCornerShape(44.dp),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shadowElevation = 2.dp
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = AppIcons.Shield,
                     contentDescription = null,
-                    modifier = Modifier.size(64.dp),
+                    modifier = Modifier.size(72.dp),
                     tint = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             }
@@ -59,7 +60,7 @@ fun PermissionsPage() {
         
         Text(
             text = "Permissions",
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.ExtraBold,
             textAlign = TextAlign.Center
         )
@@ -69,31 +70,50 @@ fun PermissionsPage() {
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            lineHeight = 24.sp,
-            modifier = Modifier.padding(top = 8.dp)
+            lineHeight = 28.sp,
+            modifier = Modifier.padding(top = 12.dp)
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(40.dp))
 
         if (multiplePermissionsState.allPermissionsGranted) {
-            Icon(
-                AppIcons.Check, 
-                contentDescription = null, 
-                tint = MaterialTheme.colorScheme.secondary, 
-                modifier = Modifier.size(56.dp)
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("Well that turned out well, lets continue.", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
+            Surface(
+                shape = RoundedCornerShape(32.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        AppIcons.Check, 
+                        contentDescription = null, 
+                        tint = MaterialTheme.colorScheme.secondary, 
+                        modifier = Modifier.size(56.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        "Well that turned out well, lets continue.", 
+                        fontWeight = FontWeight.Bold, 
+                        color = MaterialTheme.colorScheme.secondary,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
         } else {
             Button(
                 onClick = { 
                     view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                     multiplePermissionsState.launchMultiplePermissionRequest() 
                 },
-                shape = RoundedCornerShape(16.dp),
-                modifier = Modifier.height(56.dp).fillMaxWidth()
+                shape = RoundedCornerShape(28.dp), // Pill Shape
+                modifier = Modifier.height(64.dp).fillMaxWidth(),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
             ) {
-                Text("Grant Permissions", fontWeight = FontWeight.Bold)
+                Icon(AppIcons.Shield, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(modifier = Modifier.width(12.dp))
+                Text("Grant Permissions", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
             }
         }
     }

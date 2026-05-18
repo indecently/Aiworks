@@ -68,34 +68,23 @@ fun SettingsScreen(
     )
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Global Settings", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                        onBack()
-                    }) {
-                        Icon(AppIcons.Welcome, contentDescription = "Back") // Using Welcome as back for now or similar
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
-            )
-        }
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0) // Full bleed for scroll
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .background(MaterialTheme.colorScheme.background)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
-            // Section: Security
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Main scrollable content extends to top
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                // Space for the floating header
+                Spacer(modifier = Modifier.height(100.dp))
+
+                // Section: Security
             SettingsSection(
                 icon = AppIcons.Shield,
                 title = "Security & Privacy"
@@ -125,19 +114,19 @@ fun SettingsScreen(
 
                     if (lockEnabled) {
                         Spacer(modifier = Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = editablePassword,
-                            onValueChange = { 
-                                editablePassword = it
-                                scope.launch { settingsManager.setAppLockPassword(it) }
-                            },
-                            label = { Text("App Password") },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true,
-                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password)
-                        )
+                            OutlinedTextField(
+                                value = editablePassword,
+                                onValueChange = { 
+                                    editablePassword = it
+                                    scope.launch { settingsManager.setAppLockPassword(it) }
+                                },
+                                label = { Text("App Password") },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(24.dp), // Pill Shape Input
+                                singleLine = true,
+                                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password)
+                            )
                     }
                 }
             }
@@ -151,7 +140,7 @@ fun SettingsScreen(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RoundedCornerShape(12.dp)
+                        shape = RoundedCornerShape(28.dp) // Redesigned pill row
                     ) {
                         Row(
                             modifier = Modifier.padding(16.dp),
@@ -203,8 +192,8 @@ fun SettingsScreen(
                                 view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                                 launcher.launch(arrayOf("*/*")) 
                             },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f).height(56.dp),
+                            shape = RoundedCornerShape(28.dp), // Redesigned pill button
                             enabled = modelStatus !is ModelStatus.Loading
                         ) {
                             Icon(AppIcons.Upload, contentDescription = null)
@@ -218,8 +207,8 @@ fun SettingsScreen(
                                     view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                                     viewModel.unloadModel() 
                                 },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.weight(1f).height(56.dp),
+                                shape = RoundedCornerShape(28.dp), // Redesigned pill button
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
                             ) {
                                 Icon(AppIcons.Close, contentDescription = null)
@@ -293,7 +282,7 @@ fun SettingsScreen(
                             leadingIcon = if (computeAccelerator == "CPU") {
                                 { Icon(AppIcons.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
                             } else null,
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(24.dp) // Pill Shape Chip
                         )
                         FilterChip(
                             selected = computeAccelerator == "GPU",
@@ -305,7 +294,7 @@ fun SettingsScreen(
                             leadingIcon = if (computeAccelerator == "GPU") {
                                 { Icon(AppIcons.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
                             } else null,
-                            shape = RoundedCornerShape(12.dp)
+                            shape = RoundedCornerShape(24.dp) // Pill Shape Chip
                         )
                     }
                 }
@@ -343,8 +332,8 @@ fun SettingsScreen(
                                 settingsManager.setAppLockEnabled(false)
                             } 
                         },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(28.dp), // Redesigned pill button
                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer)
                     ) {
                         Icon(AppIcons.Reset, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -367,5 +356,48 @@ fun SettingsScreen(
                 }
             )
         }
+
+        // 2. Floating Header Capsule
+        Surface(
+            modifier = Modifier
+                .statusBarsPadding()
+                .padding(16.dp)
+                .align(Alignment.TopStart),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f),
+            border = androidx.compose.foundation.BorderStroke(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+            ),
+            tonalElevation = 2.dp
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                IconButton(
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        onBack()
+                    },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        AppIcons.Welcome, 
+                        contentDescription = "Back",
+                        modifier = Modifier.size(20.dp),
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Global Settings",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
     }
+}
 }

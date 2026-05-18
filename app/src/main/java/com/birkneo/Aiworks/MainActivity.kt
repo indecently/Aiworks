@@ -27,6 +27,8 @@ import androidx.compose.ui.platform.LocalView
 import com.birkneo.Aiworks.ui.chat.ChatScreen
 import com.birkneo.Aiworks.ui.chat.ChatSettingsScreen
 import com.birkneo.Aiworks.ui.chat.ChatViewModel
+import com.birkneo.Aiworks.ui.chat.closeSession
+import com.birkneo.Aiworks.ui.chat.createNewSession
 import com.birkneo.Aiworks.ui.components.GlobalLoadingOverlay
 import com.birkneo.Aiworks.ui.components.LockScreen
 import com.birkneo.Aiworks.ui.isolates.IsolatesScreen

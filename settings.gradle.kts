@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "LocalGemmaChat"
+rootProject.name = "Aiworks"
 include(":app")

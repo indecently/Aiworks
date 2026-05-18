@@ -4,15 +4,37 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Stylized 'A' for Aiworks -->
+
+    <!-- Central Silicon Chip Base -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M34,73 L54,28 L74,73 L66,73 L54,47 L42,73 Z" />
+        android:fillColor="#FFB596"
+        android:pathData="M38,38h32v32h-32z" />
+
+    <!-- Chip Pins / Connectors -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M46,63 H62 V58 H46 Z" />
-    <!-- AI Spark/Star -->
+        android:strokeColor="#FFB596"
+        android:strokeWidth="2"
+        android:strokeLineCap="round"
+        android:pathData="M44,38v-8 M54,38v-8 M64,38v-8 M44,70v8 M54,70v8 M64,70v8 M38,44h-8 M38,54h-8 M38,64h-8 M70,44h8 M70,54h8 M70,64h8" />
+
+    <!-- Sophisticated 'A' integrated into the chip -->
+    <!-- The 'A' is formed by negative space and stroke lines -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M78,21 L80,27 L86,29 L80,31 L78,37 L76,31 L70,29 L76,27 Z" />
+        android:fillColor="#552100"
+        android:pathData="M48,62 L54,44 L60,62 H57 L54,53 L51,62 Z" />
+
+    <!-- Circuit Trace connecting to 'A' -->
+    <path
+        android:strokeColor="#552100"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round"
+        android:pathData="M46,54h16" />
+
+    <!-- Outer 'A' Frame -->
+    <path
+        android:strokeColor="#FFB596"
+        android:strokeWidth="3"
+        android:strokeLineCap="round"
+        android:pathData="M30,78 L54,24 L78,78" />
+
 </vector>

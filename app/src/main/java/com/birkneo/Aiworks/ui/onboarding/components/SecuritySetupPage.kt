@@ -35,20 +35,21 @@ fun SecuritySetupPage(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 40.dp, vertical = 24.dp),
+            .padding(horizontal = 32.dp, vertical = 24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Surface(
-            modifier = Modifier.size(120.dp),
-            shape = RoundedCornerShape(32.dp),
-            color = MaterialTheme.colorScheme.tertiaryContainer
+            modifier = Modifier.size(140.dp),
+            shape = RoundedCornerShape(44.dp),
+            color = MaterialTheme.colorScheme.tertiaryContainer,
+            shadowElevation = 2.dp
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = AppIcons.Shield,
                     contentDescription = null,
-                    modifier = Modifier.size(64.dp),
+                    modifier = Modifier.size(72.dp),
                     tint = MaterialTheme.colorScheme.onTertiaryContainer
                 )
             }
@@ -58,7 +59,7 @@ fun SecuritySetupPage(
         
         Text(
             text = "Security",
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.ExtraBold,
             textAlign = TextAlign.Center
         )
@@ -68,18 +69,17 @@ fun SecuritySetupPage(
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            lineHeight = 24.sp,
-            modifier = Modifier.padding(top = 8.dp)
+            lineHeight = 28.sp,
+            modifier = Modifier.padding(top = 12.dp)
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(40.dp))
 
-        Card(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            )
+            shape = RoundedCornerShape(32.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+            shadowElevation = 1.dp
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
@@ -90,7 +90,7 @@ fun SecuritySetupPage(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text("Enable Password Lock", fontWeight = FontWeight.Bold)
+                    Text("Enable Password Lock", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
                     Switch(
                         checked = isEnabled,
                         onCheckedChange = {
@@ -106,24 +106,24 @@ fun SecuritySetupPage(
                     exit = fadeOut() + shrinkVertically()
                 ) {
                     Column {
-                        Spacer(modifier = Modifier.height(16.dp))
+                        Spacer(modifier = Modifier.height(20.dp))
                         OutlinedTextField(
                             value = password,
                             onValueChange = onPasswordChange,
                             label = { Text("Set Password") },
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(24.dp), // Pill Shape Input
                             singleLine = true,
                             visualTransformation = PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
                         )
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
                         OutlinedTextField(
                             value = confirmPassword,
                             onValueChange = onConfirmPasswordChange,
                             label = { Text("Confirm Password") },
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
+                            shape = RoundedCornerShape(24.dp), // Pill Shape Input
                             singleLine = true,
                             visualTransformation = PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),

@@ -1,5 +1,6 @@
 package com.birkneo.Aiworks.ai
 
+import android.app.ActivityManager
 import android.content.Context
 import android.net.Uri
 import android.os.Build
@@ -56,9 +57,9 @@ class GemmaInference(private val context: Context) {
     private fun createExecutorService() = Executors.newSingleThreadExecutor(object : ThreadFactory {
         override fun newThread(r: Runnable): Thread {
             return Thread(r, "gemma-inference-thread").apply {
-                // Adjust to a stable background priority (3)
-                // MIN_PRIORITY (1) can cause starvation/timeouts on some OS versions
-                priority = 3 
+                // Adjust to standard priority (5) to compete fairly for resources
+                // while still being on a background thread.
+                priority = Thread.NORM_PRIORITY 
             }
         }
     })
@@ -103,39 +104,74 @@ class GemmaInference(private val context: Context) {
                 // Close existing session before re-init
                 closeInternal()
 
-                // OPTIMIZATION: Check thermal status before selecting backend
+                // OPTIMIZATION: Check thermal status and RAM before selecting backend/config
                 val thermalStatus = powerManager.currentThermalStatus
-                val backendToUse = if (useGpu && thermalStatus < PowerManager.THERMAL_STATUS_SEVERE) {
-                    Backend.GPU()
-                } else {
-                    Backend.CPU()
+                val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                val memoryInfo = ActivityManager.MemoryInfo()
+                activityManager.getMemoryInfo(memoryInfo)
+                
+                // Determine context window based on available RAM
+                val totalRamGb = memoryInfo.totalMem / (1024 * 1024 * 1024)
+                val maxContextTokens = when {
+                    totalRamGb >= 8 -> 4096
+                    totalRamGb >= 4 -> 3072
+                    else -> 2048 // Conservative for low-end devices
                 }
 
-                val config = EngineConfig(
-                    modelPath = finalPath,
-                    backend = backendToUse,
-                    visionBackend = backendToUse,
-                    audioBackend = Backend.CPU(), // Audio usually remains on CPU for stability
-                    cacheDir = context.cacheDir.path,
-                    maxNumTokens = 4096 // STABILIZED: Reduced to prevent LowMemoryKiller crashes
-                )
+                // MULTI-STAGE INITIALIZATION: NPU -> GPU -> CPU
+                val backendsToTry = mutableListOf<Backend>()
+                if (useGpu && thermalStatus < PowerManager.THERMAL_STATUS_SEVERE) {
+                    // Check if NPU dispatch libraries actually exist to avoid native crashes
+                    val nativeLibDir = context.applicationInfo.nativeLibraryDir
+                    val hasNpuLibs = try {
+                        val libFolder = File(nativeLibDir)
+                        libFolder.exists() && libFolder.listFiles()?.any { 
+                            it.name.contains("liblitert_dispatch") || it.name.contains("libQnn") 
+                        } == true
+                    } catch (e: Exception) { false }
 
-                val initResult = withContext(inferenceDispatcher) {
-                    try {
-                        Process.setThreadPriority(Process.THREAD_PRIORITY_DEFAULT)
-                        val newEngine = Engine(config)
-                        newEngine.initialize()
-                        engine = newEngine
-                        true
-                    } catch (e: Exception) {
-                        e.printStackTrace()
-                        false
+                    if (hasNpuLibs) {
+                        backendsToTry.add(Backend.NPU(nativeLibDir))
+                    }
+                    backendsToTry.add(Backend.GPU())
+                }
+                backendsToTry.add(Backend.CPU())
+
+                var lastError: Exception? = null
+                var initSuccess = false
+
+                for (trialBackend in backendsToTry) {
+                    val config = EngineConfig(
+                        modelPath = finalPath,
+                        backend = trialBackend,
+                        visionBackend = trialBackend,
+                        audioBackend = Backend.CPU(),
+                        cacheDir = context.cacheDir.path,
+                        maxNumTokens = maxContextTokens
+                    )
+
+                    val result = withContext(inferenceDispatcher) {
+                        try {
+                            Process.setThreadPriority(Process.THREAD_PRIORITY_DEFAULT)
+                            val newEngine = Engine(config)
+                            newEngine.initialize()
+                            engine = newEngine
+                            true
+                        } catch (e: Exception) {
+                            lastError = e
+                            false
+                        }
+                    }
+
+                    if (result) {
+                        initSuccess = true
+                        break
                     }
                 }
 
-                if (!initResult) {
+                if (!initSuccess) {
                     currentModelPath = null
-                    return@withContext ModelStatus.Error("AI Engine initialization failed on target backend.")
+                    return@withContext ModelStatus.Error("AI Engine initialization failed: ${lastError?.message ?: "Unknown error"}")
                 }
 
                 currentModelPath = finalPath
