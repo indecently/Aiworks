@@ -194,12 +194,12 @@ fun MainApp(
                 IsolatesScreen(
                     viewModel = viewModel,
                     onSessionSelected = { id ->
-                        if (!isGenerating) {
+                        if (!isGenerating && (backStack.last() as? Screen.Chat)?.sessionId != id) {
                             backStack.add(Screen.Chat(sessionId = id))
                         }
                     },
                     onNavigateToSettings = {
-                        if (!isGenerating) {
+                        if (!isGenerating && backStack.last() !is Screen.Settings) {
                             backStack.add(Screen.Settings)
                         }
                     }
@@ -213,7 +213,9 @@ fun MainApp(
                     viewModel = viewModel,
                     sessionId = key.sessionId,
                     onNavigateToSettings = {
-                        backStack.add(Screen.ChatSettings(sessionId = key.sessionId))
+                        if (backStack.last() !is Screen.ChatSettings) {
+                            backStack.add(Screen.ChatSettings(sessionId = key.sessionId))
+                        }
                     }
                 )
             }

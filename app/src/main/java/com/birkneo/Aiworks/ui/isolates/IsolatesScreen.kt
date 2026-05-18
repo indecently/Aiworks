@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
@@ -68,8 +69,22 @@ fun IsolatesScreen(
     var showSortMenu by remember { mutableStateOf(false) }
     var sessionToRename by remember { mutableStateOf<ChatSession?>(null) }
 
+    // Settings Spin State
+    var isSettingsSpinning by remember { mutableStateOf(false) }
+    val settingsRotation by animateFloatAsState(
+        targetValue = if (isSettingsSpinning) 360f else 0f,
+        animationSpec = tween(durationMillis = 500, easing = LinearOutSlowInEasing),
+        label = "SettingsSpin",
+        finishedListener = {
+            if (isSettingsSpinning) {
+                onNavigateToSettings()
+                isSettingsSpinning = false
+            }
+        }
+    )
+
     // Filtering & Sorting Logic - Optimized with derivedStateOf for minimal overhead
-    val filteredSessions by remember(searchQuery, sortOrder) {
+    val filteredSessions by remember(sessions, searchQuery, sortOrder) {
         derivedStateOf {
             sessions.filter { it.title.contains(searchQuery, ignoreCase = true) }
                 .let { list ->
@@ -123,91 +138,129 @@ fun IsolatesScreen(
                     )
                 )
             } else {
-                Column {
-                    TopAppBar(
-                        title = { Text("Home", fontWeight = FontWeight.ExtraBold) },
-                        actions = {
-                            IconButton(onClick = {
-                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                onNavigateToSettings()
-                            }) {
-                                Icon(AppIcons.Settings, contentDescription = "Settings")
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.background,
-                            titleContentColor = MaterialTheme.colorScheme.onBackground,
-                            actionIconContentColor = MaterialTheme.colorScheme.onBackground
-                        )
+                // MASTER HEADER CAPSULE (Control Island)
+                Surface(
+                    modifier = Modifier
+                        .statusBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .fillMaxWidth(),
+                    shape = CircleShape, // 100% Full-Capsule Geometry
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    tonalElevation = 3.dp,
+                    border = androidx.compose.foundation.BorderStroke(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                     )
-                    
-                    // Search Bar
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // 1. Left: Home Title
+                        Text(
+                            text = "Home",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        // 2. Center-Left: Consolidated Search & Filter Capsule (Nested Bubble)
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
                             modifier = Modifier.weight(1f),
-                            placeholder = { Text("Search...") },
-                            leadingIcon = { Icon(AppIcons.Search, contentDescription = null) },
+                            placeholder = { Text("Search...", style = MaterialTheme.typography.bodyMedium) },
+                            leadingIcon = { Icon(AppIcons.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
                             trailingIcon = {
-                                if (searchQuery.isNotEmpty()) {
-                                    IconButton(onClick = { 
-                                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                        searchQuery = "" 
-                                    }) {
-                                        Icon(AppIcons.Close, contentDescription = "Clear")
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(end = 4.dp)
+                                ) {
+                                    if (searchQuery.isNotEmpty()) {
+                                        IconButton(
+                                            onClick = {
+                                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                                searchQuery = ""
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(AppIcons.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                    
+                                    // Icon-Only Filter Capsule
+                                    Surface(
+                                        onClick = {
+                                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                            showSortMenu = true
+                                        },
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                AppIcons.Tune,
+                                                contentDescription = "Filter",
+                                                modifier = Modifier.size(16.dp),
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
                                     }
                                 }
                             },
-                            shape = RoundedCornerShape(28.dp),
+                            shape = CircleShape, // 100% Full-Capsule Geometry
                             singleLine = true,
-                            colors = TextFieldDefaults.colors(
-                                focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                focusedIndicatorColor = Color.Transparent,
-                                unfocusedIndicatorColor = Color.Transparent
-                            )
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                                unfocusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent
+                            ),
+                            textStyle = MaterialTheme.typography.bodyMedium
                         )
-                        
+
                         Spacer(modifier = Modifier.width(8.dp))
-                        
-                        Box {
-                            FilterChip(
-                                selected = true,
-                                onClick = { 
+
+                        // 3. Far-Right: Spinning Settings Anchor
+                        IconButton(
+                            onClick = {
+                                if (!isSettingsSpinning) {
                                     view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                    showSortMenu = true 
-                                },
-                                label = { 
-                                    Text(
-                                        when(sortOrder) {
-                                            SessionSortOrder.DATE_NEWEST -> "Newest"
-                                            SessionSortOrder.DATE_OLDEST -> "Oldest"
-                                            SessionSortOrder.NAME -> "A-Z"
-                                            SessionSortOrder.FAVORITES -> "Favorites"
-                                        }
-                                    )
-                                },
-                                trailingIcon = { Icon(AppIcons.Tune, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                                shape = RoundedCornerShape(24.dp)
-                            )
-                            DropdownMenu(
-                                expanded = showSortMenu,
-                                onDismissRequest = { showSortMenu = false }
-                            ) {
-                                SessionSortOrder.entries.forEach { order ->
-                                    DropdownMenuItem(
-                                        text = { Text(order.displayName) },
-                                        onClick = { 
-                                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                            sortOrder = order
-                                            showSortMenu = false
-                                        }
-                                    )
+                                    isSettingsSpinning = true
                                 }
+                            },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                AppIcons.Settings,
+                                contentDescription = "Settings",
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .rotate(settingsRotation),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        // Re-using existing Sort Menu logic
+                        DropdownMenu(
+                            expanded = showSortMenu,
+                            onDismissRequest = { showSortMenu = false }
+                        ) {
+                            SessionSortOrder.entries.forEach { order ->
+                                DropdownMenuItem(
+                                    text = { Text(order.displayName) },
+                                    onClick = { 
+                                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                        sortOrder = order
+                                        showSortMenu = false
+                                    }
+                                )
                             }
                         }
                     }

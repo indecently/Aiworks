@@ -1,4 +1,4 @@
-AIworks v0.7.0.2
+AIworks v0.7.0.4
 Because your data deserves better than being Big Tech’s side chick.
 
 Introduction: Why This Damn Thing Exists
@@ -6,38 +6,53 @@ AIworks was built for one glorious reason: to give you a genuinely powerful, 100
 
 This isn’t some polished corporate product from a 200-person engineering team. Nah. This is a regular dude rage-building in Android Studio with an army of AI agents because the current options are either expensive, creepy, or both. Every update is me learning on the fly and still somehow shipping something that feels premium as hell. You’re welcome.
 
+v0.7.0.4: SmoothPillyPilly
+We went full "Control Island" on this one. If it isn't a rounded pill, it doesn't belong in the UI.
+
+The Control Island (Header Redesign):
+
+Single-Row Power: Nuked the stacked dual-row header. Everything you need—Home, Search, Filter, and Settings—is now wrapped in a single, elevated master capsule.
+
+Bubble-on-Bubble: Nested the search bar inside the master island. It looks like a premium hardware-software hybrid and gives you back massive vertical space for your chats.
+
+Spinning Gear: Added a 360-degree tactile rotation to the settings gear. Because clicking things should feel good.
+
+Expandable Capsule Settings (The Accordion Pass):
+
+Localized Expansion: Settings are now collapsible capsules. No more scrolling through a mile of toggles. Open what you need, collapse what you don't.
+
+Fluid Dimension Animations: Integrated animateContentSize everywhere. The capsules glide open and shut instead of snapping like a cheap web app.
+
+Chevron Rotation: The expansion arrows now rotate 180 degrees in real-time, providing clear visual feedback on state.
+
+120FPS Performance & Fluidity Optimization:
+
+GPU Offloading: Shifted complex layout masks and message bubble clipping to the hardware-accelerated graphics layer. We're taxing the GPU so the CPU can focus on the AI.
+
+Recomposition Caching: Implemented aggressive caching for date formatting and list filtering. The UI thread stays idle and liquid even when you have hundreds of sessions.
+
+Zero-Flicker FAB: Fixed a shadow pop glitch in the FAB menu. It now settles perfectly with zero terminal-frame artifacts.
+
+Navigation Stability (Backstack Hardening):
+
+Router Guards: Implemented a universal destination guard in the navigation core. No more duplicate screens pushing onto the backstack.
+
+Rigid Click Throttling: Once you tap a transition icon, input freezes until you're there. One tap, one result.
+
+Fixed Back-Tap: Resolved the "double back-tap" bug. A single swipe now reliably takes you home.
+
+Favorites Redesign:
+
+Mini-Pill List: Overhauled the clunky circular avatars. Favorites are now sleek horizontal mini-capsules with integrated star icons and centered labels. It's high-density, high-class, and fits perfectly under the header island.
+
 v0.7.0.2: The Monster Session
 This update is massive. We ripped out the engine’s guts, standardized the feel, and finally made the internals as clean as the UI.
 
-Haptic Engine Synchronization:
+Haptic Engine Synchronization: Every button, toggle, and slider now gives a crisp "VIRTUAL_KEY" haptic impact.
 
-Tactile everything: Every button, toggle, and slider now gives a crisp "VIRTUAL_KEY" haptic impact.
+Engine Stabilization: Enforced a one-media-type rule (Image OR Audio) and reverted context buffer to 4,096 tokens to prevent GPU/RAM meltdowns.
 
-Long-press feedback: Recording and heavy processing now trigger distinct vibrations. It feels premium because it is.
-
-Back gesture support: Swiping back actually feels like something now. No more guessing if the system registered your gesture.
-
-Engine Stabilization (aka we stopped crashing):
-
-Peak memory management: Enforced a one-media-type rule (Image OR Audio) to prevent the GPU from having an absolute meltdown.
-
-LMK prevention: Reverted the context buffer to 4,096 tokens. Turns out 8,192 was too much for the RAM to handle during multimodal peaks.
-
-Responsive loading: Lowered initialization thread priority so the UI stays liquid while the 3.6GB model loads in the background.
-
-Structural Modularization (The "Monster" Audit):
-
-The 500-line rule: Any file over 500 lines was taken to the shed and decomposed into logical modules.
-
-Cleaner architecture: Decomposed Onboarding, Isolates, and Settings into dedicated component packages.
-
-Prompt Architect: Extracted the AI's "brain" logic into a standalone utility to ensure LTM injection and instructions stay prioritized.
-
-Optimization Sweep:
-
-Sampling Parameters fixed: Temperature, Top-K, and Top-P are now fully reactive mid-session. Change them in settings, and the next response follows suit immediately.
-
-Import hygiene: Nuked a mountain of unused imports and orphaned code from the modularization move.
+Structural Modularization: Any file over 500 lines was decomposed into logical modules.
 
 Core Features (The Stuff That Actually Slaps)
 1. 100% Offline AI

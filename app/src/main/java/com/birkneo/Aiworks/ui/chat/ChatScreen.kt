@@ -11,6 +11,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,6 +25,7 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.ColorFilter
@@ -86,6 +90,20 @@ fun ChatScreen(
     var showClearConfirmation by remember { mutableStateOf(false) }
     var showUndoConfirmation by remember { mutableStateOf(false) }
     var messageToDelete by remember { mutableStateOf<ChatMessage?>(null) }
+    
+    // Settings Spin State & Navigation Guard
+    var isSettingsSpinning by remember { mutableStateOf(false) }
+    val settingsRotation by animateFloatAsState(
+        targetValue = if (isSettingsSpinning) 360f else 0f,
+        animationSpec = tween(durationMillis = 500, easing = LinearOutSlowInEasing),
+        label = "SettingsSpin",
+        finishedListener = {
+            if (isSettingsSpinning) {
+                onNavigateToSettings()
+                isSettingsSpinning = false
+            }
+        }
+    )
     
     val cameraPermission = rememberPermissionState(Manifest.permission.CAMERA)
     val micPermission = rememberPermissionState(Manifest.permission.RECORD_AUDIO)
@@ -230,16 +248,16 @@ fun ChatScreen(
                                     )
                                 }
                                 IconButton(onClick = { 
-                                    if (!isGenerating) {
+                                    if (!isGenerating && !isSettingsSpinning) {
                                         view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                        onNavigateToSettings() 
+                                        isSettingsSpinning = true
                                     }
                                 }) {
                                     Icon(
                                         imageVector = AppIcons.Settings, 
                                         contentDescription = "Settings",
-                                        tint = if (isGenerating) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onBackground,
-                                        modifier = Modifier.size(20.dp)
+                                        tint = if (isGenerating || isSettingsSpinning) MaterialTheme.colorScheme.outline else MaterialTheme.colorScheme.onBackground,
+                                        modifier = Modifier.size(20.dp).rotate(settingsRotation)
                                     )
                                 }
                             }

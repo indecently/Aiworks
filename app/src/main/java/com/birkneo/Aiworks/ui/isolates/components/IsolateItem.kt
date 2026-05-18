@@ -41,8 +41,13 @@ fun IsolateItem(
     onCopyAll: () -> Unit,
     onEnterSelectionMode: () -> Unit = {}
 ) {
-    val dateFormat = SimpleDateFormat("MMM dd, hh:mm a", Locale.getDefault())
-    val dateString = dateFormat.format(Date(session.timestamp))
+    // OPTIMIZATION: Move expensive date formatting out of composition.
+    // Use remember with session.timestamp as key to prevent re-parsing on every redraw.
+    val dateString = remember(session.timestamp) {
+        val dateFormat = SimpleDateFormat("MMM dd, hh:mm a", Locale.getDefault())
+        dateFormat.format(Date(session.timestamp))
+    }
+
     var showMenu by remember { mutableStateOf(false) }
     val view = LocalView.current
 

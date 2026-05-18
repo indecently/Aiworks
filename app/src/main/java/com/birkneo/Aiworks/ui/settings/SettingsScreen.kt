@@ -55,6 +55,13 @@ fun SettingsScreen(
     var editablePassword by remember(lockPassword) { mutableStateOf(lockPassword ?: "") }
     var showPasswordDialog by remember { mutableStateOf(false) }
 
+    // Isolate Localized Expansion States
+    var securityExpanded by remember { mutableStateOf(false) }
+    var modelExpanded by remember { mutableStateOf(false) }
+    var inferenceExpanded by remember { mutableStateOf(false) }
+    var hardwareExpanded by remember { mutableStateOf(false) }
+    var aboutExpanded by remember { mutableStateOf(false) }
+
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
         onResult = { uri ->
@@ -81,13 +88,18 @@ fun SettingsScreen(
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                // Space for the floating header
-                Spacer(modifier = Modifier.height(100.dp))
+                // Space for the floating header (Status Bar + Header Height + Gap)
+                Spacer(modifier = Modifier.statusBarsPadding().height(84.dp))
 
                 // Section: Security
             SettingsSection(
                 icon = AppIcons.Shield,
-                title = "Security & Privacy"
+                title = "Security & Privacy",
+                expanded = securityExpanded,
+                onExpandToggle = { 
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    securityExpanded = !securityExpanded 
+                }
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(
@@ -113,7 +125,8 @@ fun SettingsScreen(
                     }
 
                     if (lockEnabled) {
-                        Spacer(modifier = Modifier.height(8.dp))
+                        SettingsLayoutGuard(visible = lockEnabled) {
+                            Spacer(modifier = Modifier.height(8.dp))
                             OutlinedTextField(
                                 value = editablePassword,
                                 onValueChange = { 
@@ -127,6 +140,7 @@ fun SettingsScreen(
                                 visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
                                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password)
                             )
+                        }
                     }
                 }
             }
@@ -134,7 +148,12 @@ fun SettingsScreen(
             // Section: Model Management
             SettingsSection(
                 icon = AppIcons.Model,
-                title = "AI Engine"
+                title = "AI Engine",
+                expanded = modelExpanded,
+                onExpandToggle = { 
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    modelExpanded = !modelExpanded 
+                }
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Card(
@@ -176,13 +195,15 @@ fun SettingsScreen(
                         exit = fadeOut() + shrinkVertically()
                     ) {
                         val status = modelStatus as? ModelStatus.Loading
-                        Column {
-                            LinearProgressIndicator(
-                                progress = { status?.progress ?: 0f },
-                                modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape)
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text("Loading... ${((status?.progress ?: 0f) * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
+                        SettingsLayoutGuard(visible = modelStatus is ModelStatus.Loading) {
+                            Column {
+                                LinearProgressIndicator(
+                                    progress = { status?.progress ?: 0f },
+                                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape)
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text("Loading... ${((status?.progress ?: 0f) * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
+                            }
                         }
                     }
 
@@ -223,7 +244,12 @@ fun SettingsScreen(
             // Section: Inference
             SettingsSection(
                 icon = AppIcons.Tune,
-                title = "Sampling Parameters"
+                title = "Sampling Parameters",
+                expanded = inferenceExpanded,
+                onExpandToggle = { 
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    inferenceExpanded = !inferenceExpanded 
+                }
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     InferenceParameterRow(
@@ -265,7 +291,12 @@ fun SettingsScreen(
             // Section: Hardware
             SettingsSection(
                 icon = AppIcons.Model,
-                title = "Hardware & Performance"
+                title = "Hardware & Performance",
+                expanded = hardwareExpanded,
+                onExpandToggle = { 
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    hardwareExpanded = !hardwareExpanded 
+                }
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("Compute Accelerator", style = MaterialTheme.typography.bodyMedium)
@@ -303,7 +334,12 @@ fun SettingsScreen(
             // Section: About
             SettingsSection(
                 icon = AppIcons.Info,
-                title = "About"
+                title = "About",
+                expanded = aboutExpanded,
+                onExpandToggle = { 
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    aboutExpanded = !aboutExpanded 
+                }
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
@@ -316,7 +352,7 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(text = "Version", style = MaterialTheme.typography.bodySmall)
-                        Text(text = "0.7.0.2 (Tinbuckthree)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        Text(text = "0.7.0.4 (SmoothPillyPilly)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))

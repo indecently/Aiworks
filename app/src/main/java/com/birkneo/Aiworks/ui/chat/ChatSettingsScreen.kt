@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.birkneo.Aiworks.data.database.ChatDatabase
+import com.birkneo.Aiworks.ui.settings.components.SettingsLayoutGuard
 import com.birkneo.Aiworks.ui.settings.components.SettingsSection
 import com.birkneo.Aiworks.ui.theme.AppIcons
 import com.birkneo.Aiworks.ui.chat.*
@@ -58,6 +59,13 @@ fun ChatSettingsScreen(
     var memoryToEditIndex by remember { mutableIntStateOf(-1) }
 
     val isCompressing by viewModel.isCompressingContext.collectAsState()
+
+    // Isolate Localized Expansion States
+    var privacyExpanded by remember { mutableStateOf(false) }
+    var reasoningExpanded by remember { mutableStateOf(false) }
+    var appearanceExpanded by remember { mutableStateOf(false) }
+    var personaExpanded by remember { mutableStateOf(false) }
+    var contextExpanded by remember { mutableStateOf(false) }
     
     val memoryItems = remember(sessionMemory) {
         sessionMemory?.split("\n")?.filter { it.isNotBlank() } ?: emptyList()
@@ -112,12 +120,20 @@ fun ChatSettingsScreen(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                // Header Space
-                item { Spacer(modifier = Modifier.height(100.dp)) }
+                // Header Space (Status Bar + Header Height + Gap)
+                item { Spacer(modifier = Modifier.statusBarsPadding().height(84.dp)) }
 
                 // Privacy Section
             item {
-                SettingsSection(icon = AppIcons.Palette, title = "Privacy & Visibility") {
+                SettingsSection(
+                    icon = AppIcons.Palette, 
+                    title = "Privacy & Visibility",
+                    expanded = privacyExpanded,
+                    onExpandToggle = { 
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        privacyExpanded = !privacyExpanded 
+                    }
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -145,7 +161,15 @@ fun ChatSettingsScreen(
 
             // Reasoning Section
             item {
-                SettingsSection(icon = AppIcons.Psychology, title = "Reasoning Engine") {
+                SettingsSection(
+                    icon = AppIcons.Psychology, 
+                    title = "Reasoning Engine",
+                    expanded = reasoningExpanded,
+                    onExpandToggle = { 
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        reasoningExpanded = !reasoningExpanded 
+                    }
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -173,7 +197,15 @@ fun ChatSettingsScreen(
 
             // Appearance Section
             item {
-                SettingsSection(icon = AppIcons.Edit, title = "Appearance") {
+                SettingsSection(
+                    icon = AppIcons.Edit, 
+                    title = "Appearance",
+                    expanded = appearanceExpanded,
+                    onExpandToggle = { 
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        appearanceExpanded = !appearanceExpanded 
+                    }
+                ) {
                     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                             Box(
@@ -232,7 +264,15 @@ fun ChatSettingsScreen(
 
             // Persona Section
             item {
-                SettingsSection(icon = AppIcons.Psychology, title = "Persona & Instructions") {
+                SettingsSection(
+                    icon = AppIcons.Psychology, 
+                    title = "Persona & Instructions",
+                    expanded = personaExpanded,
+                    onExpandToggle = { 
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        personaExpanded = !personaExpanded 
+                    }
+                ) {
                     OutlinedTextField(
                         value = persona,
                         onValueChange = { 
@@ -250,7 +290,15 @@ fun ChatSettingsScreen(
 
             // Memory Section Title & Stats
             item {
-                SettingsSection(icon = AppIcons.Storage, title = "Context & Stats") {
+                SettingsSection(
+                    icon = AppIcons.Storage, 
+                    title = "Context & Stats",
+                    expanded = contextExpanded,
+                    onExpandToggle = { 
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        contextExpanded = !contextExpanded 
+                    }
+                ) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                             Column {
@@ -309,27 +357,29 @@ fun ChatSettingsScreen(
 
             // Memory Actions
             item {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                    if (isCompressing) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(4.dp), strokeWidth = 2.dp)
-                    } else {
-                        TextButton(onClick = { 
-                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                            viewModel.generateLongTermMemory(sessionId) 
-                        }) {
-                            Icon(AppIcons.Welcome, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Generate Memory")
+                SettingsLayoutGuard(visible = !isCompressing) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        if (isCompressing) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp).padding(4.dp), strokeWidth = 2.dp)
+                        } else {
+                            TextButton(onClick = { 
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                viewModel.generateLongTermMemory(sessionId) 
+                            }) {
+                                Icon(AppIcons.Welcome, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Generate Memory")
+                            }
                         }
-                    }
-                    if (sessionMemory != null && !isCompressing) {
-                        TextButton(onClick = { 
-                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                            viewModel.clearChatMemory(sessionId) 
-                        }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
-                            Icon(AppIcons.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("Clear")
+                        if (sessionMemory != null && !isCompressing) {
+                            TextButton(onClick = { 
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                viewModel.clearChatMemory(sessionId) 
+                            }, colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)) {
+                                Icon(AppIcons.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Clear")
+                            }
                         }
                     }
                 }

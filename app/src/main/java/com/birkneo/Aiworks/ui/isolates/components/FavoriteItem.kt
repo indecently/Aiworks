@@ -24,55 +24,66 @@ import com.birkneo.Aiworks.ui.theme.AppIcons
 @Composable
 fun FavoriteItem(session: ChatSession, onClick: () -> Unit) {
     val view = LocalView.current
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.width(72.dp).clickable(onClick = {
+    Surface(
+        onClick = {
             view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
             onClick()
-        })
+        },
+        shape = CircleShape, // 100% Full-Capsule Geometry
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+        tonalElevation = 2.dp,
+        modifier = Modifier.padding(vertical = 4.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.primaryContainer),
-            contentAlignment = Alignment.Center
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            if (session.imageUri != null) {
-                AsyncImage(
-                    model = session.imageUri,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Icon(
-                    AppIcons.Person,
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+            // Left: Scaled-down Profile Image
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer),
+                contentAlignment = Alignment.Center
+            ) {
+                if (session.imageUri != null) {
+                    AsyncImage(
+                        model = session.imageUri,
+                        contentDescription = null,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
+                } else {
+                    Icon(
+                        AppIcons.Person,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
             }
             
+            Spacer(modifier = Modifier.width(12.dp))
+            
+            // Center: Title Label
+            Text(
+                text = session.title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 120.dp)
+            )
+            
+            Spacer(modifier = Modifier.width(8.dp))
+            
+            // Right: Integrated Star Icon
             Icon(
-                AppIcons.Star,
-                contentDescription = null,
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .size(18.dp)
-                    .background(MaterialTheme.colorScheme.background, CircleShape)
-                    .padding(2.dp),
-                tint = Color(0xFFFFD700)
+                imageVector = AppIcons.Star,
+                contentDescription = "Favorite",
+                modifier = Modifier.size(14.dp),
+                tint = Color(0xFFFFD700) // Classic Gold
             )
         }
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            text = session.title,
-            style = MaterialTheme.typography.labelSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-            fontWeight = FontWeight.Medium
-        )
     }
 }

@@ -74,7 +74,14 @@ fun StreamingPlaceholder() {
         }
         Spacer(modifier = Modifier.width(12.dp))
         
-        Canvas(modifier = Modifier.size(width = 32.dp, height = 8.dp)) {
+        Canvas(
+            modifier = Modifier
+                .size(width = 32.dp, height = 8.dp)
+                .graphicsLayer { 
+                    // OPTIMIZATION: Ensure the dots animation is hardware accelerated
+                    renderEffect = null
+                }
+        ) {
             val dotRadius = 4.dp.toPx()
             val dotSpacing = 4.dp.toPx()
             
@@ -171,7 +178,17 @@ fun MessageBubble(
                 modifier = Modifier
                     .widthIn(max = 300.dp, min = if (message.isThinking) 130.dp else 40.dp)
                     .defaultMinSize(minHeight = if (message.isThinking) 56.dp else 0.dp)
-                    .animateContentSize(),
+                    .animateContentSize()
+                    .graphicsLayer {
+                        // OPTIMIZATION: Shift complex bubble layout masks to hardware layer
+                        clip = true
+                        shape = RoundedCornerShape(
+                            topStart = 20.dp,
+                            topEnd = 20.dp,
+                            bottomStart = if (isUser) 20.dp else 4.dp,
+                            bottomEnd = if (isUser) 4.dp else 20.dp
+                        )
+                    },
                 shape = RoundedCornerShape(
                     topStart = 20.dp,
                     topEnd = 20.dp,
