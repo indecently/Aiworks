@@ -1,24 +1,24 @@
 package com.birkneo.Aiworks.util
 
 import android.content.Context
-import android.provider.Settings
 import android.speech.tts.TextToSpeech
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 import java.util.Locale
 
 class TtsManager(context: Context) : TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private var isInitialized = false
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
     init {
-        // Initialize TTS with the system's preferred engine explicitly to ensure it respects user settings
-        // instead of potentially defaulting to a hardcoded or internal fallback.
-        val defaultEngine = Settings.Secure.getString(context.contentResolver, "tts_default_synth")
-        tts = if (defaultEngine != null) {
-            TextToSpeech(context.applicationContext, this, defaultEngine)
-        } else {
-            TextToSpeech(context.applicationContext, this)
-        }
+        // Rely on the standard Android system default instead of manual setting lookups.
+        // This ensures we strictly respect the user's choice in system settings.
+        tts = TextToSpeech(context.applicationContext, this)
     }
 
     override fun onInit(status: Int) {
@@ -33,14 +33,23 @@ class TtsManager(context: Context) : TextToSpeech.OnInitListener {
     fun speak(text: String) {
         if (!isInitialized) return
         
-        // Stop any current speech before starting new queued chunks
-        tts?.stop()
+        // OPTIMIZATION: Move chunking and queueing to a background thread.
+        // String manipulation (regex, substrings) on long AI responses can cause frame drops.
+        scope.launch {
+            // Stop any current speech before starting new queued chunks
+            withContext(Dispatchers.Main) {
+                tts?.stop()
+            }
 
-        // Handle Android's ~4000 character limit by chunking the text
-        val chunks = chunkText(text)
-        chunks.forEachIndexed { index, chunk ->
-            val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-            tts?.speak(chunk, queueMode, null, "chunk_$index")
+            // Handle Android's ~4000 character limit by chunking the text
+            val chunks = chunkText(text)
+            
+            withContext(Dispatchers.Main) {
+                chunks.forEachIndexed { index, chunk ->
+                    val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
+                    tts?.speak(chunk, queueMode, null, "chunk_$index")
+                }
+            }
         }
     }
 

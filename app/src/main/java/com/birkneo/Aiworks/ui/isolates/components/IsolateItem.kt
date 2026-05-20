@@ -51,11 +51,16 @@ fun IsolateItem(
     var showMenu by remember { mutableStateOf(false) }
     val view = LocalView.current
 
-    // ELIMINATING TRANSPARENCY: Use solid colors to prevent shadow/bleeding artifacts
+    // OPTIMIZATION: Use a more efficient stiffness for the color animation
+    // and only animate if the item is visible or recently changed.
     val backgroundColorState by animateColorAsState(
         targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer
                       else MaterialTheme.colorScheme.surfaceVariant,
-        animationSpec = spring(stiffness = Spring.StiffnessLow)
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "ItemColor"
     )
 
     val itemShape = RoundedCornerShape(40.dp)
@@ -153,53 +158,78 @@ fun IsolateItem(
                     }
                 }
                 
-                DropdownMenu(
-                    expanded = showMenu,
-                    onDismissRequest = { showMenu = false },
-                    modifier = Modifier
-                        .width(220.dp)
-                        .background(Color.Transparent), 
-                    shape = RoundedCornerShape(40.dp),
-                    containerColor = Color.Transparent, 
-                    tonalElevation = 0.dp,               
-                    shadowElevation = 0.dp,              
-                    properties = androidx.compose.ui.window.PopupProperties(
-                        focusable = true,
-                        clippingEnabled = true
-                    )
-                ) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
+                // OPTIMIZATION: Only compose the DropdownMenu when it's actually shown.
+                // This reduces the initial memory and composition overhead for each list item.
+                if (showMenu) {
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false },
+                        modifier = Modifier
+                            .width(220.dp)
+                            .background(Color.Transparent), 
                         shape = RoundedCornerShape(40.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = androidx.compose.foundation.BorderStroke(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                        ),
-                        shadowElevation = 0.dp,
-                        tonalElevation = 0.dp
+                        containerColor = Color.Transparent, 
+                        tonalElevation = 0.dp,               
+                        shadowElevation = 0.dp,              
+                        properties = androidx.compose.ui.window.PopupProperties(
+                            focusable = true,
+                            clippingEnabled = true
+                        )
                     ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(8.dp)
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(40.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = androidx.compose.foundation.BorderStroke(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                            ),
+                            shadowElevation = 0.dp,
+                            tonalElevation = 0.dp
                         ) {
-                            val menuItems = listOf(
-                                Triple(if (session.isFavorite) "Unfavorite" else "Favorite", if (session.isFavorite) AppIcons.StarOutline else AppIcons.Star, onFavoriteToggle),
-                                Triple("Duplicate", AppIcons.Copy, onDuplicate),
-                                Triple("Rename", AppIcons.Edit, onRename),
-                                Triple("Copy All Text", AppIcons.CopyAll, onCopyAll),
-                                Triple("Select Multiple", AppIcons.Check, onEnterSelectionMode)
-                            )
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(8.dp)
+                            ) {
+                                val menuItems = listOf(
+                                    Triple(if (session.isFavorite) "Unfavorite" else "Favorite", if (session.isFavorite) AppIcons.StarOutline else AppIcons.Star, onFavoriteToggle),
+                                    Triple("Duplicate", AppIcons.Copy, onDuplicate),
+                                    Triple("Rename", AppIcons.Edit, onRename),
+                                    Triple("Copy All Text", AppIcons.CopyAll, onCopyAll),
+                                    Triple("Select Multiple", AppIcons.Check, onEnterSelectionMode)
+                                )
 
-                            menuItems.forEach { (text, icon, action) ->
+                                menuItems.forEach { (text, icon, action) ->
+                                    Surface(
+                                        onClick = { 
+                                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                            action(); showMenu = false 
+                                        },
+                                        shape = RoundedCornerShape(24.dp),
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Text(text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                        }
+                                    }
+                                }
+
                                 Surface(
                                     onClick = { 
                                         view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                        action(); showMenu = false 
+                                        onDelete(); showMenu = false 
                                     },
                                     shape = RoundedCornerShape(24.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(vertical = 4.dp)
@@ -208,31 +238,10 @@ fun IsolateItem(
                                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                                        Icon(AppIcons.Delete, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
                                         Spacer(modifier = Modifier.width(12.dp))
-                                        Text(text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                        Text("Delete", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                                     }
-                                }
-                            }
-
-                            Surface(
-                                onClick = { 
-                                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                    onDelete(); showMenu = false 
-                                },
-                                shape = RoundedCornerShape(24.dp),
-                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(AppIcons.Delete, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Text("Delete", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }

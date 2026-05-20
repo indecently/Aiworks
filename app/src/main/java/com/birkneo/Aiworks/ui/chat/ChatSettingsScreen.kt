@@ -74,7 +74,7 @@ fun ChatSettingsScreen(
     LaunchedEffect(sessionId, session, isCompressing) {
         if (!isCompressing) {
             val texts = if (isIncognito) {
-                viewModel.messages.value.map { it.text }
+                viewModel.dbMessages.value.map { it.text }
             } else {
                 chatDao.getRecentMessagesForSession(sessionId, 1000).map { it.text }
             }

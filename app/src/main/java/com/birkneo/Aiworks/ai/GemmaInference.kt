@@ -50,16 +50,18 @@ class GemmaInference(private val context: Context) {
 
     private val powerManager by lazy { context.getSystemService(Context.POWER_SERVICE) as PowerManager }
     
-    // Dedicated high-priority dispatcher for inference
-    private var executorService = createExecutorService()
-    private var inferenceDispatcher: CoroutineDispatcher = executorService.asCoroutineDispatcher()
+    // ARCHITECTURAL OPTIMIZATION: Separate dispatchers for User Inference and Background Tasks
+    // Prevents Auto-Summarization from starving active chat responsiveness.
+    private var userInferenceExecutor = createExecutorService("gemma-user-inference", Thread.MAX_PRIORITY)
+    private var backgroundTaskExecutor = createExecutorService("gemma-background-task", Thread.NORM_PRIORITY)
+    
+    private var userInferenceDispatcher: CoroutineDispatcher = userInferenceExecutor.asCoroutineDispatcher()
+    private var backgroundTaskDispatcher: CoroutineDispatcher = backgroundTaskExecutor.asCoroutineDispatcher()
 
-    private fun createExecutorService() = Executors.newSingleThreadExecutor(object : ThreadFactory {
+    private fun createExecutorService(name: String, priority: Int) = Executors.newSingleThreadExecutor(object : ThreadFactory {
         override fun newThread(r: Runnable): Thread {
-            return Thread(r, "gemma-inference-thread").apply {
-                // Adjust to standard priority (5) to compete fairly for resources
-                // while still being on a background thread.
-                priority = Thread.NORM_PRIORITY 
+            return Thread(r, name).apply {
+                this.priority = priority
             }
         }
     })
@@ -150,9 +152,13 @@ class GemmaInference(private val context: Context) {
                         maxNumTokens = maxContextTokens
                     )
 
-                    val result = withContext(inferenceDispatcher) {
+                    // CRITICAL FIX: Initialization MUST happen on Dispatchers.IO.
+                    // Using userInferenceDispatcher (MAX_PRIORITY) for initialization leads to
+                    // CPU starvation of the Main Thread during mmap and delegate creation.
+                    val result = withContext(Dispatchers.IO) {
                         try {
-                            Process.setThreadPriority(Process.THREAD_PRIORITY_DEFAULT)
+                            // Ensure thread priority doesn't steal cycles from Choreographer
+                            Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
                             val newEngine = Engine(config)
                             newEngine.initialize()
                             engine = newEngine
@@ -189,6 +195,7 @@ class GemmaInference(private val context: Context) {
         return try {
             val destinationFile = File(context.filesDir, "model.litertlm")
             
+            // OPTIMIZATION: Use FileChannel transferTo for zero-copy I/O throughput
             context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
                 FileInputStream(pfd.fileDescriptor).use { input ->
                     FileOutputStream(destinationFile).use { output ->
@@ -196,7 +203,7 @@ class GemmaInference(private val context: Context) {
                         val outputChannel = output.channel
                         val size = inputChannel.size()
                         var transferred = 0L
-                        val chunkSize = 1024L * 1024L // 1MB chunks for progress reporting
+                        val chunkSize = 8L * 1024L * 1024L // 8MB chunks for high-speed transfer
                         
                         while (transferred < size) {
                             val count = inputChannel.transferTo(transferred, chunkSize, outputChannel)
@@ -291,7 +298,7 @@ class GemmaInference(private val context: Context) {
                 // but preserve all other whitespace and prose formatting.
                 textResult.removePrefix("***")
             }
-            ?.flowOn(inferenceDispatcher)
+            ?.flowOn(userInferenceDispatcher)
     }
 
     private suspend fun checkThermalAndThrottle() {
@@ -300,6 +307,10 @@ class GemmaInference(private val context: Context) {
             delay(500) // Inject cooling delay
         } else if (status >= PowerManager.THERMAL_STATUS_MODERATE) {
             delay(100) // Light throttling
+        } else {
+            // OPTIMIZATION: Yield more frequently even in normal thermal states
+            // to allow the EGL producer (UI thread) to signal its fences and refresh buffers.
+            delay(8)
         }
     }
 
@@ -343,7 +354,7 @@ class GemmaInference(private val context: Context) {
         topK: Int = 40,
         topP: Double = 0.95,
         systemInstruction: String? = null
-    ) = withContext(inferenceDispatcher) {
+    ) = withContext(Dispatchers.IO) {
         conversation?.close()
         conversation = null
         
@@ -357,11 +368,12 @@ class GemmaInference(private val context: Context) {
                     seed = 0
                 )
             )
+            // Creating a conversation can be blocking if it triggers KV cache allocation
             conversation = e.createConversation(conversationConfig)
         }
     }
 
-    suspend fun summarize(textToSummarize: String): String? = withContext(inferenceDispatcher) {
+    suspend fun summarize(textToSummarize: String): String? = withContext(backgroundTaskDispatcher) {
         val currentEngine = engine ?: return@withContext null
         
         // CRITICAL: Close existing conversation first because LiteRT only supports one session at a time.
@@ -403,7 +415,7 @@ class GemmaInference(private val context: Context) {
      * PROCESS B: Recursive Condensation.
      * Merges current Long-Term Memory with new segments into a single high-density core.
      */
-    suspend fun distillMemory(currentLtm: String, newSegment: String): String? = withContext(inferenceDispatcher) {
+    suspend fun distillMemory(currentLtm: String, newSegment: String): String? = withContext(backgroundTaskDispatcher) {
         val currentEngine = engine ?: return@withContext null
         
         conversation?.close()
@@ -469,10 +481,15 @@ class GemmaInference(private val context: Context) {
         engine = null
         currentModelPath = null
         
-        // SHUTDOWN EXECUTOR: Prevent thread leaks by rebuilding the dispatcher on next load.
-        executorService.shutdown()
-        executorService = createExecutorService()
-        inferenceDispatcher = executorService.asCoroutineDispatcher()
+        // SHUTDOWN EXECUTORS: Rebuild dispatchers on next load to ensure fresh threads
+        userInferenceExecutor.shutdown()
+        backgroundTaskExecutor.shutdown()
+
+        userInferenceExecutor = createExecutorService("gemma-user-inference", Thread.MAX_PRIORITY)
+        backgroundTaskExecutor = createExecutorService("gemma-background-task", Thread.NORM_PRIORITY)
+        
+        userInferenceDispatcher = userInferenceExecutor.asCoroutineDispatcher()
+        backgroundTaskDispatcher = backgroundTaskExecutor.asCoroutineDispatcher()
     }
 
     fun cleanupMediaCache() {

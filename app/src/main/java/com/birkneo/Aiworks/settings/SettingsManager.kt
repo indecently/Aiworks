@@ -27,10 +27,20 @@ class SettingsManager(private val context: Context) {
         val TOP_K = intPreferencesKey("top_k")
         val TOP_P = doublePreferencesKey("top_p")
         val COMPUTE_ACCELERATOR = stringPreferencesKey("compute_accelerator")
+        val HOME_WALLPAPER_PATH = stringPreferencesKey("home_wallpaper_path")
+        val BOTTOM_SEARCH_BAR = booleanPreferencesKey("bottom_search_bar")
     }
 
     val modelPath: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[MODEL_PATH]
+    }
+
+    val homeWallpaperPath: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[HOME_WALLPAPER_PATH]
+    }
+
+    val bottomSearchBar: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[BOTTOM_SEARCH_BAR] ?: false
     }
 
     val temperature: Flow<Double> = context.dataStore.data.map { preferences ->
@@ -102,6 +112,22 @@ class SettingsManager(private val context: Context) {
     suspend fun setComputeAccelerator(accelerator: String) {
         context.dataStore.edit { preferences ->
             preferences[COMPUTE_ACCELERATOR] = accelerator
+        }
+    }
+
+    suspend fun setHomeWallpaperPath(path: String?) {
+        context.dataStore.edit { preferences ->
+            if (path == null) {
+                preferences.remove(HOME_WALLPAPER_PATH)
+            } else {
+                preferences[HOME_WALLPAPER_PATH] = path
+            }
+        }
+    }
+
+    suspend fun setBottomSearchBar(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[BOTTOM_SEARCH_BAR] = enabled
         }
     }
 

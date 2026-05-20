@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ModelPersistenceService : Service() {
 
@@ -67,8 +68,11 @@ class ModelPersistenceService : Service() {
 
     private fun cleanupAndStop() {
         serviceScope.launch {
+            // PERF: Ensure native memory release doesn't block the service's final destruction
             GemmaContainer.getGemmaInference(applicationContext).close()
-            stopSelf()
+            withContext(Dispatchers.Main) {
+                stopSelf()
+            }
         }
     }
 

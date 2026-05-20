@@ -17,6 +17,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -25,11 +27,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.birkneo.Aiworks.ai.ModelStatus
+import kotlinx.coroutines.flow.StateFlow
 
 @Composable
 fun GlobalLoadingOverlay(
-    status: ModelStatus
+    statusFlow: StateFlow<ModelStatus>
 ) {
+    val status by statusFlow.collectAsState()
     val isLoading = status is ModelStatus.Loading
     
     AnimatedVisibility(
@@ -60,9 +64,10 @@ fun GlobalLoadingOverlay(
                 )
                 Spacer(modifier = Modifier.height(24.dp))
                 
-                val loadingText = if (status is ModelStatus.Loading) {
-                    if (status.progress >= 1.0f) "Initializing AI Engine..."
-                    else "Preparing Model... ${((status.progress) * 100).toInt()}%"
+                val currentStatus = status
+                val loadingText = if (currentStatus is ModelStatus.Loading) {
+                    if (currentStatus.progress >= 1.0f) "Initializing..."
+                    else "Preparing Model... ${((currentStatus.progress) * 100).toInt()}%"
                 } else ""
                 
                 Text(
@@ -76,7 +81,7 @@ fun GlobalLoadingOverlay(
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Text(
-                    text = "Please wait, this may take a moment depending on your device.",
+                    text = "this may take a moment depending on your device.",
                     style = MaterialTheme.typography.bodySmall,
                     color = Color.White.copy(alpha = 0.8f),
                     textAlign = TextAlign.Center

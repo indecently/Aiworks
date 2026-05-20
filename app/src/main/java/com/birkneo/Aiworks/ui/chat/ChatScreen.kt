@@ -56,7 +56,7 @@ fun ChatScreen(
     onNavigateToSettings: () -> Unit
 ) {
     val context = LocalContext.current
-    val messages by viewModel.messages.collectAsStateWithLifecycle()
+    val dbMessages by viewModel.dbMessages.collectAsStateWithLifecycle()
     val streamingMessage by viewModel.streamingMessage.collectAsStateWithLifecycle()
     val modelStatus by viewModel.modelStatus.collectAsStateWithLifecycle()
     val isGenerating by viewModel.isGenerating.collectAsStateWithLifecycle()
@@ -119,31 +119,17 @@ fun ChatScreen(
         }
     }
 
-    LaunchedEffect(messages.size, streamingMessage?.text?.length) {
-        if (messages.isNotEmpty()) {
-            val isGeneratingOrStreaming = isGenerating || streamingMessage != null
-            if (isGeneratingOrStreaming) {
-                // Determine if we should snap to bottom
-                val layoutInfo = listState.layoutInfo
-                val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull()
-                val totalItemsCount = layoutInfo.totalItemsCount
-                
-                // If we are near the bottom (within 2 items), snap instantly
-                // This is much more efficient than animateScrollToItem during high-speed streaming
-                if (lastVisibleItem != null && lastVisibleItem.index >= totalItemsCount - 3) {
-                    listState.scrollToItem(messages.size - 1)
-                }
-            } else {
-                // For a standard new message (initial send), use a smooth animation
-                listState.animateScrollToItem(messages.size - 1)
-            }
+    // Reverse Layout Optimization: Scroll to bottom (index 0) on new messages
+    LaunchedEffect(dbMessages.size) {
+        if (dbMessages.isNotEmpty()) {
+            listState.animateScrollToItem(0)
         }
     }
 
     val isKeyboardVisible = WindowInsets.ime.asPaddingValues().calculateBottomPadding() > 0.dp
     LaunchedEffect(isKeyboardVisible) {
-        if (isKeyboardVisible && messages.isNotEmpty()) {
-            listState.animateScrollToItem(messages.size - 1)
+        if (isKeyboardVisible && dbMessages.isNotEmpty()) {
+            listState.animateScrollToItem(0)
         }
     }
 
@@ -351,10 +337,31 @@ fun ChatScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    reverseLayout = true,
+                    verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.Bottom),
                     contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp)
                 ) {
-                    items(messages, key = { it.id }) { message ->
+                    if (isGenerating && streamingMessage == null) {
+                        item(key = "placeholder") {
+                            StreamingPlaceholder()
+                        }
+                    }
+                    
+                    if (streamingMessage != null) {
+                        item(key = "streaming_msg") {
+                            MessageBubble(
+                                message = streamingMessage!!,
+                                onLongClick = { },
+                                onSpeak = { },
+                                onEdit = { },
+                                onCopy = { },
+                                onDelete = { },
+                                onRegenerate = { }
+                            )
+                        }
+                    }
+
+                    items(dbMessages, key = { it.id }) { message ->
                         MessageBubble(
                             message = message,
                             onLongClick = {
@@ -367,12 +374,6 @@ fun ChatScreen(
                             onDelete = { messageToDelete = message },
                             onRegenerate = { viewModel.regenerateResponse() }
                         )
-                    }
-                    
-                    if (isGenerating && messages.none { it.role == MessageRole.ASSISTANT && it.isStreaming }) {
-                        item {
-                            StreamingPlaceholder()
-                        }
                     }
                 }
             }

@@ -38,10 +38,24 @@ import com.birkneo.Aiworks.ui.settings.SettingsScreen
 import com.birkneo.Aiworks.ui.theme.LocalGemmaChatTheme
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import com.birkneo.Aiworks.di.GemmaContainer
 
 class MainActivity : ComponentActivity() {
     private val intentFlow = MutableStateFlow<Intent?>(null)
     private val _assistantIntentConsumed = MutableStateFlow(false)
+
+    // OPTIMIZATION: Memory Pressure Watchdog
+    // Automatically flushes caches if the system is low on RAM to prevent OOM
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_RUNNING_CRITICAL) {
+            val inference = GemmaContainer.getGemmaInference(applicationContext)
+            if (!inference.isConversationActive()) {
+                // Non-destructive cleanup: only flush if not actively chatting
+                inference.cleanupMediaCache()
+            }
+        }
+    }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -64,7 +78,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             LocalGemmaChatTheme {
                 val viewModel: ChatViewModel = viewModel()
-                val modelStatus by viewModel.modelStatus.collectAsState()
+                
+                // OPTIMIZATION: Root-level state observation is minimized.
+                // modelStatus is now observed internally by GlobalLoadingOverlay.
                 val isUnlocked by viewModel.isUnlocked.collectAsState()
                 val isTransientUnlock by viewModel.isTransientUnlock.collectAsState()
                 
@@ -93,7 +109,7 @@ class MainActivity : ComponentActivity() {
                             onIntentConsumed = { _assistantIntentConsumed.value = true }
                         )
                     }
-                    GlobalLoadingOverlay(status = modelStatus)
+                    GlobalLoadingOverlay(statusFlow = viewModel.modelStatus)
                 }
             }
         }

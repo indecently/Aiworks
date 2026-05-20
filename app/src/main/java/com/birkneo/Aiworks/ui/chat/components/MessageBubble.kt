@@ -22,7 +22,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -58,10 +57,7 @@ fun StreamingPlaceholder() {
         Box(
             modifier = Modifier
                 .size(28.dp)
-                .graphicsLayer { 
-                    clip = true
-                    shape = CircleShape
-                }
+                .clip(CircleShape)
                 .background(MaterialTheme.colorScheme.primaryContainer),
             contentAlignment = Alignment.Center
         ) {
@@ -75,12 +71,7 @@ fun StreamingPlaceholder() {
         Spacer(modifier = Modifier.width(12.dp))
         
         Canvas(
-            modifier = Modifier
-                .size(width = 32.dp, height = 8.dp)
-                .graphicsLayer { 
-                    // OPTIMIZATION: Ensure the dots animation is hardware accelerated
-                    renderEffect = null
-                }
+            modifier = Modifier.size(width = 32.dp, height = 8.dp)
         ) {
             val dotRadius = 4.dp.toPx()
             val dotSpacing = 4.dp.toPx()
@@ -157,10 +148,7 @@ fun MessageBubble(
                 Box(
                     modifier = Modifier
                         .size(28.dp)
-                        .graphicsLayer { 
-                            clip = true
-                            shape = CircleShape
-                        }
+                        .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.primaryContainer),
                     contentAlignment = Alignment.Center
                 ) {
@@ -174,27 +162,21 @@ fun MessageBubble(
                 Spacer(modifier = Modifier.width(8.dp))
             }
 
+            val bubbleShape = RoundedCornerShape(
+                topStart = 20.dp,
+                topEnd = 20.dp,
+                bottomStart = if (isUser) 20.dp else 4.dp,
+                bottomEnd = if (isUser) 4.dp else 20.dp
+            )
+
             Surface(
                 modifier = Modifier
                     .widthIn(max = 300.dp, min = if (message.isThinking) 130.dp else 40.dp)
                     .defaultMinSize(minHeight = if (message.isThinking) 56.dp else 0.dp)
-                    .animateContentSize()
-                    .graphicsLayer {
-                        // OPTIMIZATION: Shift complex bubble layout masks to hardware layer
-                        clip = true
-                        shape = RoundedCornerShape(
-                            topStart = 20.dp,
-                            topEnd = 20.dp,
-                            bottomStart = if (isUser) 20.dp else 4.dp,
-                            bottomEnd = if (isUser) 4.dp else 20.dp
-                        )
-                    },
-                shape = RoundedCornerShape(
-                    topStart = 20.dp,
-                    topEnd = 20.dp,
-                    bottomStart = if (isUser) 20.dp else 4.dp,
-                    bottomEnd = if (isUser) 4.dp else 20.dp
-                ),
+                    // OPTIMIZATION: Disable height animation during active streaming to prevent lag/clipping.
+                    // This forces the container to instantly snap to the exact text metrics frame-by-frame.
+                    .then(if (!message.isStreaming) Modifier.animateContentSize() else Modifier),
+                shape = bubbleShape,
                 color = containerColor,
                 border = androidx.compose.foundation.BorderStroke(
                     width = 1.dp,
@@ -208,7 +190,9 @@ fun MessageBubble(
                             onClick = {},
                             onLongClick = onLongClick
                         )
+                        // INTRINSIC HEIGHT: Ensure padding is factored before clipping
                         .padding(12.dp)
+                        .then(if (message.isStreaming) Modifier.height(IntrinsicSize.Max) else Modifier)
                 ) {
                     if (message.isThinking) {
                         Row(

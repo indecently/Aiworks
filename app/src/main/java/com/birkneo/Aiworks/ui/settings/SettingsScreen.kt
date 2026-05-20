@@ -9,6 +9,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -47,6 +48,8 @@ fun SettingsScreen(
     val topK by settingsManager.topK.collectAsState(initial = 40)
     val topP by settingsManager.topP.collectAsState(initial = 0.95)
     val computeAccelerator by settingsManager.computeAccelerator.collectAsState(initial = "GPU")
+    val homeWallpaperPath by settingsManager.homeWallpaperPath.collectAsState(initial = null)
+    val bottomSearchBar by settingsManager.bottomSearchBar.collectAsState(initial = false)
     val modelStatus by viewModel.modelStatus.collectAsState()
     
     val lockEnabled by settingsManager.appLockEnabled.collectAsState(initial = false)
@@ -60,7 +63,13 @@ fun SettingsScreen(
     var modelExpanded by remember { mutableStateOf(false) }
     var inferenceExpanded by remember { mutableStateOf(false) }
     var hardwareExpanded by remember { mutableStateOf(false) }
+    var wallpaperExpanded by remember { mutableStateOf(false) }
     var aboutExpanded by remember { mutableStateOf(false) }
+
+    // License Dialog States
+    var showLicenseDialog by remember { mutableStateOf(false) }
+    var licenseDialogTitle by remember { mutableStateOf("") }
+    var licenseDialogText by remember { mutableStateOf("") }
 
     val launcher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -69,6 +78,28 @@ fun SettingsScreen(
                 scope.launch {
                     settingsManager.setModelPath(it.toString())
                     viewModel.loadModel(it.toString())
+                }
+            }
+        }
+    )
+
+    val wallpaperLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia(),
+        onResult = { uri ->
+            uri?.let {
+                scope.launch {
+                    try {
+                        val inputStream = context.contentResolver.openInputStream(it)
+                        val file = java.io.File(context.filesDir, "home_wallpaper.jpg")
+                        inputStream?.use { input ->
+                            file.outputStream().use { output ->
+                                input.copyTo(output)
+                            }
+                        }
+                        settingsManager.setHomeWallpaperPath(file.absolutePath)
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
                 }
             }
         }
@@ -331,6 +362,88 @@ fun SettingsScreen(
                 }
             }
 
+            // Section: Wallpaper
+            SettingsSection(
+                icon = AppIcons.Palette,
+                title = "Appearance & Personalization",
+                expanded = wallpaperExpanded,
+                onExpandToggle = {
+                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                    wallpaperExpanded = !wallpaperExpanded
+                }
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    // Home Wallpaper Sub-section
+                    Text(
+                        text = "Home Wallpaper",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Customize the background of your Home Screen with a blurred image.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(
+                            onClick = {
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                wallpaperLauncher.launch(
+                                    androidx.activity.result.PickVisualMediaRequest(
+                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                    )
+                                )
+                            },
+                            modifier = Modifier.weight(1f).height(56.dp),
+                            shape = RoundedCornerShape(28.dp)
+                        ) {
+                            Icon(AppIcons.Image, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Select Image")
+                        }
+
+                        if (homeWallpaperPath != null) {
+                            OutlinedButton(
+                                onClick = {
+                                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                    scope.launch { settingsManager.setHomeWallpaperPath(null) }
+                                },
+                                modifier = Modifier.weight(1f).height(56.dp),
+                                shape = RoundedCornerShape(28.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = MaterialTheme.colorScheme.error
+                                )
+                            ) {
+                                Icon(AppIcons.Delete, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Remove")
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    // Layout Sub-section
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Bottom Search Bar", style = MaterialTheme.typography.bodyMedium)
+                            Text("Relocate the search pill to the bottom of the screen.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
+                        }
+                        Switch(
+                            checked = bottomSearchBar,
+                            onCheckedChange = { 
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                scope.launch { settingsManager.setBottomSearchBar(it) }
+                            }
+                        )
+                    }
+                }
+            }
+
             // Section: About
             SettingsSection(
                 icon = AppIcons.Info,
@@ -343,16 +456,47 @@ fun SettingsScreen(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        text = "Aiworks is a personalized, privacy-first AI assistant. Process images and audio entirely on-device with custom personas.",
+                        text = "Aiworks is a privacy-first AI assistant. Process images and audio entirely on-device with custom personas. Powered by the Google LiteRT Runtime (formerly TensorFlow Lite), licensed under Apache 2.0.",
                         style = MaterialTheme.typography.bodyMedium
                     )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text(
+                            text = "GNU GPLv3 License",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable {
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                licenseDialogTitle = "GNU GPLv3 License"
+                                licenseDialogText = context.assets.open("LICENSE.txt").bufferedReader().use { it.readText() }
+                                showLicenseDialog = true
+                            }
+                        )
+                        Text(
+                            text = "Third-Party Notices",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.clickable {
+                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                licenseDialogTitle = "Third-Party Notices"
+                                licenseDialogText = context.assets.open("THIRD_PARTY_NOTICES.txt").bufferedReader().use { it.readText() }
+                                showLicenseDialog = true
+                            }
+                        )
+                    }
+
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(text = "Version", style = MaterialTheme.typography.bodySmall)
-                        Text(text = "0.7.0.4 (SmoothPillyPilly)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                        Text(text = "0.7.0.5 (OpenPillyPilly)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
                     }
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -374,7 +518,7 @@ fun SettingsScreen(
                     ) {
                         Icon(AppIcons.Reset, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Reset App & Onboarding")
+                        Text("Reset Onboarding")
                     }
                 }
             }
@@ -390,6 +534,38 @@ fun SettingsScreen(
                         showPasswordDialog = false
                     }
                 }
+            )
+        }
+
+        if (showLicenseDialog) {
+            AlertDialog(
+                onDismissRequest = { showLicenseDialog = false },
+                title = { Text(licenseDialogTitle) },
+                text = {
+                    Box(modifier = Modifier.heightIn(max = 400.dp)) {
+                        Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                            Text(
+                                text = licenseDialogText,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    Button(
+                        onClick = { 
+                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                            showLicenseDialog = false 
+                        },
+                        shape = RoundedCornerShape(28.dp)
+                    ) {
+                        Text("Dismiss")
+                    }
+                },
+                shape = RoundedCornerShape(28.dp),
+                containerColor = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp
             )
         }
 

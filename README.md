@@ -1,13 +1,46 @@
 AIworks v0.7.0.4
 Because your data deserves better than being Big Tech’s side chick.
 
+License: GNU GPLv3
+This project is licensed under the GNU General Public License v3.0. See the [LICENSE](LICENSE) file for the full text.
+
 Introduction: Why This Damn Thing Exists
 AIworks was built for one glorious reason: to give you a genuinely powerful, 100% offline AI that doesn’t phone home, sell your soul, or treat your privacy like an optional DLC.
 
 This isn’t some polished corporate product from a 200-person engineering team. Nah. This is a regular dude rage-building in Android Studio with an army of AI agents because the current options are either expensive, creepy, or both. Every update is me learning on the fly and still somehow shipping something that feels premium as hell. You’re welcome.
 
+v0.7.0.6: Engine Optimization & LiteRT Update
+We’re tightening the screws on the inference engine to make sure the "brain" of the app runs as smoothly as the UI.
+
+Core Engine Upgrades:
+- **LiteRT-LM 0.12.0 Migration**: Jumped to the latest runtime release. This brings under-the-hood stability improvements and better coordination with the Gemma 2B architecture.
+- **Dependency Hardening**: Updated version catalogs to ensure all AI-related libraries are synced with the 0.12 baseline.
+
+v0.7.0.5: Deep-Tissue Performance Audit
+We went under the hood with a scalpel. If it wasn't contributing to a 60FPS fluid scroll, it was refactored or buried.
+
+Scroll Fluidity & List Optimization:
+- **Lazy Menu Injection**: Dropped the memory footprint of the session list. Dropdown menus are now lazily composed only upon interaction, saving massive composition overhead during rapid scrolls.
+- **Background Filtering Engine**: Shifted all search and sort logic off the UI thread. The ViewModel now computes the filtered list on a background dispatcher, ensuring the main thread only handles rendering.
+- **Animation Softening**: Retuned the stiffness of item selection animations. It’s still snappy, but uses fewer GPU cycles to get there.
+
+State Management & Threading:
+- **Root-Level Recomposition Shield**: Isolated the `modelStatus` observation. The entire app no longer redraws when the AI engine is loading; only the overlay gets the update. 
+- **Main Thread Hardening**: Guaranteed zero-block startup. Database cleanup and session pruning moved to dedicated IO threads, keeping the home screen liquid from the first frame.
+- **Flow-Based Search**: Transitioned search queries to persistent StateFlows. One-way data flow, zero side effects.
+
 v0.7.0.4: SmoothPillyPilly
 We went full "Control Island" on this one. If it isn't a rounded pill, it doesn't belong in the UI.
+
+Appearance & Personalization (The Layout Shift):
+
+Home Screen Wallpapers: You can now set a custom background for the Home screen. We added a 24dp aesthetic blur and a tonal overlay so your chats stay legible while your home screen looks fire.
+
+The Dynamic Layout Toggle: Hate the top bar? Move it. Added a "Bottom Search Bar" toggle that relocates the entire search/settings pill to the bottom.
+
+Dynamic FAB Logic: The Floating Action Button is now reactive. If the bar is at the bottom, the FAB stacks center-stage above it. If the bar is at the top, it anchors back to the bottom-right corner. It’s smart, balanced, and one-hand friendly.
+
+Extended FAB Refactor: Nuked the old label-icon separation. Expanded chat options are now unified Material 3 pills that stack with perfect coordinate stability. No jumps, no skips, just smooth expansion.
 
 The Control Island (Header Redesign):
 

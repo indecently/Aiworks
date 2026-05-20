@@ -21,7 +21,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalView
@@ -90,10 +89,7 @@ fun WaveformVisualizer(
     }
 
     Canvas(
-        modifier = modifier.graphicsLayer { 
-            // Hardware accelerate the waveform to ensure 60FPS during UI heavy tasks
-            renderEffect = null
-        }
+        modifier = modifier
     ) {
         // Access redrawTrigger to ensure composition is aware of the change
         val _trigger = redrawTrigger

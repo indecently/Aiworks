@@ -9,11 +9,16 @@ import com.birkneo.Aiworks.data.ChatMessage
 import com.birkneo.Aiworks.data.MessageRole
 import com.birkneo.Aiworks.data.entity.ChatSession
 import com.birkneo.Aiworks.di.GemmaContainer
+import com.birkneo.Aiworks.ui.isolates.SessionSortOrder
 import java.io.File
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.flow.SharingStarted
@@ -23,6 +28,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -36,15 +42,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     internal val _streamingMessage = MutableStateFlow<ChatMessage?>(null)
     val streamingMessage: StateFlow<ChatMessage?> = _streamingMessage.asStateFlow()
 
+    // OPTIMIZATION: Separate DB messages from the transient streaming message.
+    // This prevents the entire message list from re-calculating on every incoming token.
+    // We also reverse the list here once to avoid .asReversed() churn in the UI.
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    val messages: StateFlow<List<ChatMessage>> = _currentSessionIdFlow
+    val dbMessages: StateFlow<List<ChatMessage>> = _currentSessionIdFlow
         .flatMapLatest { sessionId ->
             if (sessionId == null) flowOf(emptyList())
             else repository.getMessagesForSession(sessionId)
         }
-        .combine(_streamingMessage) { dbMessages, streaming ->
-            dbMessages + listOfNotNull(streaming)
-        }
+        .map { it.asReversed() }
+        .distinctUntilChanged()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     internal val _modelStatus = MutableStateFlow<ModelStatus>(ModelStatus.NotLoaded)
@@ -67,6 +75,47 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     val sessions: StateFlow<List<ChatSession>> = repository.getAllSessionsFlow()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _sortOrder = MutableStateFlow(SessionSortOrder.DATE_NEWEST)
+    val sortOrder: StateFlow<SessionSortOrder> = _sortOrder.asStateFlow()
+
+    /**
+     * OPTIMIZATION: Filtering and Sorting moved to ViewModel to ensure the UI 
+     * receives a pre-processed list, preventing jank on the main thread during 
+     * rapid search or scroll.
+     */
+    val filteredSessions: StateFlow<List<ChatSession>> = combine(
+        sessions, _searchQuery, _sortOrder
+    ) { sessionsList, query, order ->
+        if (query.isEmpty()) {
+            sortSessions(sessionsList, order)
+        } else {
+            val filtered = sessionsList.filter { it.title.contains(query, ignoreCase = true) }
+            sortSessions(filtered, order)
+        }
+    }
+    .flowOn(Dispatchers.Default)
+    .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private fun sortSessions(list: List<ChatSession>, order: SessionSortOrder): List<ChatSession> {
+        return when (order) {
+            SessionSortOrder.DATE_NEWEST -> list.sortedByDescending { it.timestamp }
+            SessionSortOrder.DATE_OLDEST -> list.sortedBy { it.timestamp }
+            SessionSortOrder.NAME -> list.sortedBy { it.title }
+            SessionSortOrder.FAVORITES -> list.sortedByDescending { it.isFavorite }
+        }
+    }
+
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
+    fun setSortOrder(order: SessionSortOrder) {
+        _sortOrder.value = order
+    }
 
     internal var currentSessionId: String? = null
     internal var inferenceSessionId: String? = null
@@ -98,7 +147,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val hasLocalModel = internalModelFile.exists()
 
         viewModelScope.launch {
-            repository.deleteIncognitoSessions()
+            // OPTIMIZATION: Move blocking DB/IO operations to background dispatcher
+            withContext(Dispatchers.IO) {
+                repository.deleteIncognitoSessions()
+            }
+
             val lockEnabled = settingsManager.appLockEnabled.first()
             if (lockEnabled) {
                 combine(_isUnlocked, _isTransientUnlock) { unlocked, transient ->
