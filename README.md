@@ -1,4 +1,4 @@
-AIworks v0.7.0.4
+AIworks v0.7.0.5
 Because your data deserves better than being Big Tech’s side chick.
 
 License: GNU GPLv3
@@ -9,7 +9,7 @@ AIworks was built for one glorious reason: to give you a genuinely powerful, 100
 
 This isn’t some polished corporate product from a 200-person engineering team. Nah. This is a regular dude rage-building in Android Studio with an army of AI agents because the current options are either expensive, creepy, or both. Every update is me learning on the fly and still somehow shipping something that feels premium as hell. You’re welcome.
 
-v0.7.0.6: Engine Optimization & LiteRT Update
+v0.7.0.5: Engine Optimization & LiteRT Update
 We’re tightening the screws on the inference engine to make sure the "brain" of the app runs as smoothly as the UI.
 
 Core Engine Upgrades:
