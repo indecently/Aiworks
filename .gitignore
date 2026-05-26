@@ -25,7 +25,8 @@ temp.txt
 
 # AI Agent Artifacts
 .artifacts/
-.agent/plan.md
+.agent/
+AGENTS.md
 
 # Hardware / Specific
 input_images/
