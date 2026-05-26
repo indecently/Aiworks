@@ -58,14 +58,14 @@ fun SecuritySetupPage(
         Spacer(modifier = Modifier.height(48.dp))
         
         Text(
-            text = "Security",
+            text = "Keep it locked",
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.ExtraBold,
             textAlign = TextAlign.Center
         )
         
         Text(
-            text = "Secure assistant with a password. If enabled, all data is completely yours.",
+            text = "Want to keep your chats extra safe? Set up a password. If you lose it, we can't help you—it's that private.",
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

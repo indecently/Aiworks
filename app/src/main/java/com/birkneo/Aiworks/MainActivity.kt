@@ -34,6 +34,7 @@ import com.birkneo.Aiworks.ui.components.LockScreen
 import com.birkneo.Aiworks.ui.isolates.IsolatesScreen
 import com.birkneo.Aiworks.ui.navigation.Screen
 import com.birkneo.Aiworks.ui.onboarding.OnboardingScreen
+import com.birkneo.Aiworks.ui.settings.DeveloperScreen
 import com.birkneo.Aiworks.ui.settings.SettingsScreen
 import com.birkneo.Aiworks.ui.theme.LocalGemmaChatTheme
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -100,7 +101,10 @@ class MainActivity : ComponentActivity() {
 
                 Box(modifier = Modifier.fillMaxSize()) {
                     if (lockEnabled && !isUnlocked && !isTransientUnlock) {
-                        LockScreen(onUnlock = { viewModel.verifyAndUnlock(it) })
+                        LockScreen(
+                            onUnlock = { viewModel.verifyAndUnlock(it) },
+                            onIncognitoChat = { viewModel.triggerIncognitoChat() }
+                        )
                     } else {
                         MainApp(
                             viewModel = viewModel, 
@@ -135,6 +139,7 @@ fun MainApp(
 
     val isGenerating by viewModel.isGenerating.collectAsState()
     val isTransientUnlock by viewModel.isTransientUnlock.collectAsState()
+    val pendingIncognitoChat by viewModel.pendingIncognitoChat.collectAsState()
     
     // Determine starting screen based on persistent state
     val startScreen = remember(onboardingCompleted, modelPath) {
@@ -164,6 +169,16 @@ fun MainApp(
             }
         }
     }
+
+    LaunchedEffect(pendingIncognitoChat) {
+        if (pendingIncognitoChat) {
+            viewModel.createNewSession(isIncognito = true) { sessionId ->
+                viewModel.consumeIncognitoChat()
+                backStack.add(Screen.Chat(sessionId = sessionId))
+            }
+        }
+    }
+
     val strategy = rememberListDetailSceneStrategy<NavKey>()
 
     NavDisplay(
@@ -254,6 +269,24 @@ fun MainApp(
                 metadata = ListDetailSceneStrategy.detailPane()
             ) {
                 SettingsScreen(
+                    viewModel = viewModel,
+                    onBack = {
+                        if (backStack.size > 1) {
+                            backStack.removeAt(backStack.size - 1)
+                        }
+                    },
+                    onNavigateToDeveloper = {
+                        if (!isGenerating && backStack.last() !is Screen.Developer) {
+                            backStack.add(Screen.Developer)
+                        }
+                    }
+                )
+            }
+            is Screen.Developer -> NavEntry(
+                key = key,
+                metadata = ListDetailSceneStrategy.detailPane()
+            ) {
+                DeveloperScreen(
                     viewModel = viewModel,
                     onBack = {
                         if (backStack.size > 1) {

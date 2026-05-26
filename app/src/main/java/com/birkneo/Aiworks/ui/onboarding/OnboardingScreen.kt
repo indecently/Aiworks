@@ -36,7 +36,7 @@ fun OnboardingScreen(
     val view = LocalView.current
     val settingsManager = remember { GemmaContainer.getSettingsManager(context) }
     val scope = rememberCoroutineScope()
-    val pagerState = rememberPagerState(pageCount = { 6 })
+    val pagerState = rememberPagerState(pageCount = { 7 })
     
     val modelStatus by viewModel.modelStatus.collectAsState()
 
@@ -79,7 +79,7 @@ fun OnboardingScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        repeat(6) { iteration ->
+                        repeat(7) { iteration ->
                             val isSelected = pagerState.currentPage == iteration
                             val width by androidx.compose.animation.core.animateDpAsState(
                                 targetValue = if (isSelected) 32.dp else 8.dp,
@@ -102,7 +102,7 @@ fun OnboardingScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (pagerState.currentPage < 5) {
+                        if (pagerState.currentPage < 6) {
                             TextButton(
                                 onClick = {
                                     view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
@@ -119,15 +119,15 @@ fun OnboardingScreen(
 
                         val nextEnabled = when (pagerState.currentPage) {
                             3 -> modelStatus is ModelStatus.Ready
-                            4 -> !isLockEnabled || (setupPassword.length >= 4 && setupPassword == confirmPassword)
+                            5 -> !isLockEnabled || (setupPassword.length >= 4 && setupPassword == confirmPassword)
                             else -> true
                         }
 
                         Button(
                             onClick = {
                                 view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                if (pagerState.currentPage < 5) {
-                                    if (pagerState.currentPage == 4) {
+                                if (pagerState.currentPage < 6) {
+                                    if (pagerState.currentPage == 5) {
                                         scope.launch {
                                             settingsManager.setAppLockEnabled(isLockEnabled)
                                             if (isLockEnabled) {
@@ -151,11 +151,11 @@ fun OnboardingScreen(
                             elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
                         ) {
                             Text(
-                                if (pagerState.currentPage == 5) "Lets go" else "Next",
+                                if (pagerState.currentPage == 6) "Let's go" else "Next",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold
                             )
-                            if (pagerState.currentPage < 5) {
+                            if (pagerState.currentPage < 6) {
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Icon(AppIcons.Send, contentDescription = null, modifier = Modifier.size(18.dp))
                             }
@@ -176,21 +176,18 @@ fun OnboardingScreen(
             when (page) {
                 0 -> OnboardingPage(
                     icon = AppIcons.Welcome,
-                    title = "Setup",
-                    description = "Fully offline, private, powerful assistant thats actually YOURS.",
-                    warning = "Optimized for a multimodel and agentic native user experience."
+                    title = "Yo! Welcome.",
+                    description = "We're about to set up your personal AI. It's fast, private, and lives entirely on your phone.",
+                    warning = "No clouds, no spying. Just pure intelligence."
                 )
-                1 -> OnboardingPage(
-                    icon = AppIcons.Private,
-                    title = "100% Private & Offline",
-                    description = "No data ever leaves your device. Your conversations, images, and audio are yours alone, always."
-                )
+                1 -> FeaturesPage()
                 2 -> PermissionsPage()
                 3 -> ModelSetupPage(
                     modelStatus = modelStatus,
                     onLoadClick = { launcher.launch(arrayOf("*/*")) }
                 )
-                4 -> SecuritySetupPage(
+                4 -> LicensesPage()
+                5 -> SecuritySetupPage(
                     isEnabled = isLockEnabled,
                     onEnabledChange = { isLockEnabled = it },
                     password = setupPassword,
@@ -198,10 +195,10 @@ fun OnboardingScreen(
                     confirmPassword = confirmPassword,
                     onConfirmPasswordChange = { confirmPassword = it }
                 )
-                5 -> OnboardingPage(
+                6 -> OnboardingPage(
                     icon = AppIcons.Chat,
-                    title = "Ready to Begin",
-                    description = "Create regular or incognito chats, customize your AI's persona, and explore on-device intelligence."
+                    title = "You're all set!",
+                    description = "Time to experience AI the way it was meant to be. Fast, private, and yours. Let's get to work."
                 )
             }
         }

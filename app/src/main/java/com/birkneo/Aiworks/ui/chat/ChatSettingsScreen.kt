@@ -159,42 +159,6 @@ fun ChatSettingsScreen(
                 }
             }
 
-            // Reasoning Section
-            item {
-                SettingsSection(
-                    icon = AppIcons.Psychology, 
-                    title = "Reasoning Engine",
-                    expanded = reasoningExpanded,
-                    onExpandToggle = { 
-                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                        reasoningExpanded = !reasoningExpanded 
-                    }
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Deep Reasoning", style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                text = "Enable chain-of-thought for complex problem solving.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.outline
-                            )
-                        }
-                        val isReasoning by remember(session) { derivedStateOf { session?.isReasoningMode == true } }
-                        Switch(
-                            checked = isReasoning,
-                            onCheckedChange = { 
-                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                viewModel.updateSessionReasoning(sessionId, it) 
-                            }
-                        )
-                    }
-                }
-            }
-
             // Appearance Section
             item {
                 SettingsSection(

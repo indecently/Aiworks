@@ -2,40 +2,33 @@ package com.birkneo.Aiworks.ui.isolates
 
 import android.view.HapticFeedbackConstants
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.zIndex
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.draw.blur
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.birkneo.Aiworks.data.entity.ChatSession
 import com.birkneo.Aiworks.di.GemmaContainer
 import com.birkneo.Aiworks.ui.chat.*
 import com.birkneo.Aiworks.ui.isolates.components.*
 import com.birkneo.Aiworks.ui.theme.AppIcons
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -60,7 +53,6 @@ fun IsolatesScreen(
     val scope = rememberCoroutineScope()
 
     var sessionToDelete by remember { mutableStateOf<ChatSession?>(null) }
-    var isFabExpanded by remember { mutableStateOf(false) }
     
     // Selection Mode State
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -102,7 +94,6 @@ fun IsolatesScreen(
                     .blur(6.dp),
                 contentScale = ContentScale.Crop
             )
-            // Tonal overlay for readability
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -114,41 +105,20 @@ fun IsolatesScreen(
             containerColor = if (homeWallpaperPath != null) Color.Transparent else MaterialTheme.colorScheme.background,
             topBar = {
                 if (isSelectionMode) {
-                    CenterAlignedTopAppBar(
-                        title = { 
-                            Text(
-                                "${selectedSessionIds.size} Selected", 
-                                fontWeight = FontWeight.Bold,
-                                style = MaterialTheme.typography.titleMedium
-                            ) 
+                    SelectionToolbar(
+                        selectedCount = selectedSessionIds.size,
+                        onCancel = {
+                            isSelectionMode = false
+                            selectedSessionIds.clear()
                         },
-                        navigationIcon = {
-                            IconButton(onClick = { 
-                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        onDelete = {
+                            scope.launch {
+                                val toDelete = sessions.filter { it.id in selectedSessionIds }
+                                toDelete.forEach { viewModel.deleteSession(it) }
                                 isSelectionMode = false
                                 selectedSessionIds.clear()
-                            }) {
-                                Icon(Icons.Rounded.Close, contentDescription = "Cancel")
                             }
-                        },
-                        actions = {
-                            if (selectedSessionIds.isNotEmpty()) {
-                                IconButton(onClick = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                    scope.launch {
-                                        val toDelete = sessions.filter { it.id in selectedSessionIds }
-                                        toDelete.forEach { viewModel.deleteSession(it) }
-                                        isSelectionMode = false
-                                        selectedSessionIds.clear()
-                                    }
-                                }) {
-                                    Icon(Icons.Rounded.Delete, contentDescription = "Delete Selected", tint = MaterialTheme.colorScheme.error)
-                                }
-                            }
-                        },
-                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surface
-                        )
+                        }
                     )
                 } else if (!bottomSearchBar) {
                     SearchControlPill(
@@ -178,11 +148,10 @@ fun IsolatesScreen(
                     start = 16.dp, 
                     end = 16.dp, 
                     top = 16.dp, 
-                    bottom = 92.dp // Consistent bottom padding for Control Island / FAB
+                    bottom = 92.dp
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Favorites Section
                 if (favoriteSessions.isNotEmpty() && searchQuery.isEmpty()) {
                     item {
                         Text(
@@ -210,7 +179,7 @@ fun IsolatesScreen(
                         if (searchQuery.isEmpty()) "Recent Chats" else "Search Results",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.padding(bottom = 4.dp, start = 4.dp) // Reduced bottom padding
+                        modifier = Modifier.padding(bottom = 4.dp, start = 4.dp)
                     )
                 }
 
@@ -293,119 +262,30 @@ fun IsolatesScreen(
             }
         }
 
-        // --- Furniture Overlay ---
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .navigationBarsPadding()
         ) {
-            // 1. FAB (Fixed Bottom Layer)
             if (!isSelectionMode) {
-                val rotation by animateFloatAsState(
-                    targetValue = if (isFabExpanded) 45f else 0f,
-                    animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow),
-                    label = "FabRotation"
+                FabMenu(
+                    isGenerating = isGenerating,
+                    bottomSearchBar = bottomSearchBar,
+                    onNewSession = { isIncognito ->
+                        viewModel.createNewSession(isIncognito = isIncognito) { id ->
+                            onSessionSelected(id)
+                        }
+                    }
                 )
-
-                val alignment = if (bottomSearchBar) Alignment.BottomCenter else Alignment.BottomEnd
-                val baseBottomPadding = if (bottomSearchBar) 92.dp else 16.dp
-
-                // Stable Container for FAB and Menu
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 16.dp)
-                ) {
-                    // Expanded Menu Container (Independent Anchor)
-                    Column(
-                        horizontalAlignment = if (bottomSearchBar) Alignment.CenterHorizontally else Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier
-                            .align(alignment)
-                            .padding(bottom = baseBottomPadding + 72.dp) // Anchored above FAB
-                    ) {
-                        var showSecond by remember { mutableStateOf(false) }
-                        LaunchedEffect(isFabExpanded) {
-                            if (isFabExpanded) {
-                                delay(100)
-                                showSecond = true
-                            } else {
-                                showSecond = false
-                            }
-                        }
-
-                        AnimatedVisibility(
-                            visible = showSecond,
-                            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-                            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut()
-                        ) {
-                            ExtendedFabItem(
-                                label = "Incognito Chat",
-                                icon = AppIcons.VisibilityOff,
-                                containerColor = MaterialTheme.colorScheme.secondary,
-                                onClick = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                    isFabExpanded = false
-                                    viewModel.createNewSession(isIncognito = true) { id ->
-                                        onSessionSelected(id)
-                                    }
-                                }
-                            )
-                        }
-
-                        AnimatedVisibility(
-                            visible = isFabExpanded,
-                            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-                            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut()
-                        ) {
-                            ExtendedFabItem(
-                                label = "Regular Chat",
-                                icon = AppIcons.ChatOutline,
-                                containerColor = MaterialTheme.colorScheme.primary,
-                                onClick = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                    isFabExpanded = false
-                                    viewModel.createNewSession(isIncognito = false) { id ->
-                                        onSessionSelected(id)
-                                    }
-                                }
-                            )
-                        }
-                    }
-
-                    // Floating Action Button (Static Anchor)
-                    FloatingActionButton(
-                        onClick = { 
-                            if (!isGenerating) {
-                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                isFabExpanded = !isFabExpanded 
-                            }
-                        },
-                        modifier = Modifier
-                            .align(alignment)
-                            .padding(bottom = baseBottomPadding),
-                        containerColor = if (isGenerating) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        else if (isFabExpanded) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.primary,
-                        contentColor = if (isGenerating) MaterialTheme.colorScheme.outline
-                        else if (isFabExpanded) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onPrimary
-                    ) {
-                        Icon(
-                            AppIcons.Add,
-                            contentDescription = "New Chat Options",
-                            modifier = Modifier.rotate(rotation)
-                        )
-                    }
-                }
             }
 
-            // 2. Search Pill (IME-Sensitive Top Layer)
             if (!isSelectionMode && bottomSearchBar) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
                         .align(Alignment.BottomCenter)
-                        .imePadding() // Glides with keyboard
-                        .zIndex(1f)   // Renders above FAB
+                        .imePadding()
+                        .zIndex(1f)
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
                     SearchControlPill(
@@ -421,199 +301,9 @@ fun IsolatesScreen(
                         },
                         settingsRotation = settingsRotation,
                         modifier = Modifier.fillMaxWidth(),
-                        useNavigationPadding = false // Handled by overlay wrapper
+                        useNavigationPadding = false
                     )
                 }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SearchControlPill(
-    searchQuery: String,
-    onSearchQueryChange: (String) -> Unit,
-    sortOrder: SessionSortOrder,
-    onSortOrderChange: (SessionSortOrder) -> Unit,
-    onSettingsClick: () -> Unit,
-    settingsRotation: Float,
-    modifier: Modifier = Modifier,
-    useNavigationPadding: Boolean = false
-) {
-    val view = LocalView.current
-    var showSortMenu by remember { mutableStateOf(false) }
-
-    Surface(
-        modifier = modifier
-            .then(if (useNavigationPadding) Modifier.navigationBarsPadding() else Modifier)
-            .fillMaxWidth(),
-        shape = CircleShape, // 100% Full-Capsule Geometry
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        tonalElevation = 3.dp,
-        border = androidx.compose.foundation.BorderStroke(
-            width = 1.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            // 1. Left: Home Title
-            Text(
-                text = "Home",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(start = 8.dp)
-            )
-
-            Spacer(modifier = Modifier.width(12.dp))
-
-            // 2. Center-Left: Consolidated Search & Filter Capsule (Nested Bubble)
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchQueryChange,
-                modifier = Modifier.weight(1f),
-                placeholder = { Text("Search...", style = MaterialTheme.typography.bodyMedium) },
-                leadingIcon = { Icon(AppIcons.Search, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                trailingIcon = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(end = 4.dp)
-                    ) {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(
-                                onClick = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                    onSearchQueryChange("")
-                                },
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Icon(AppIcons.Close, contentDescription = "Clear", modifier = Modifier.size(16.dp))
-                            }
-                        }
-                        
-                        // Icon-Only Filter Capsule
-                        Box(contentAlignment = Alignment.Center) {
-                            Surface(
-                                onClick = {
-                                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                    showSortMenu = true
-                                },
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        AppIcons.Tune,
-                                        contentDescription = "Filter",
-                                        modifier = Modifier.size(16.dp),
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                            }
-
-                            // Explicitly Anchored Sorting Menu
-                            DropdownMenu(
-                                expanded = showSortMenu,
-                                onDismissRequest = { showSortMenu = false },
-                                modifier = Modifier
-                                    .width(200.dp)
-                                    .background(Color.Transparent),
-                                offset = androidx.compose.ui.unit.DpOffset(x = (-16).dp, y = 8.dp),
-                                properties = androidx.compose.ui.window.PopupProperties(
-                                    focusable = true,
-                                    clippingEnabled = true
-                                ),
-                                containerColor = Color.Transparent,
-                                tonalElevation = 0.dp,
-                                shadowElevation = 0.dp
-                            ) {
-                                Surface(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(40.dp),
-                                    color = MaterialTheme.colorScheme.surface,
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        width = 1.dp,
-                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                                    ),
-                                    shadowElevation = 4.dp,
-                                    tonalElevation = 2.dp
-                                ) {
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(8.dp)
-                                    ) {
-                                        SessionSortOrder.entries.forEach { order ->
-                                            Surface(
-                                                onClick = { 
-                                                    view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                                    onSortOrderChange(order)
-                                                    showSortMenu = false
-                                                },
-                                                shape = RoundedCornerShape(24.dp),
-                                                color = if (sortOrder == order) 
-                                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                                else 
-                                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(vertical = 4.dp)
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Text(
-                                                        text = order.displayName, 
-                                                        style = MaterialTheme.typography.bodyMedium, 
-                                                        fontWeight = if (sortOrder == order) FontWeight.Bold else FontWeight.Medium,
-                                                        color = if (sortOrder == order) 
-                                                            MaterialTheme.colorScheme.primary 
-                                                        else 
-                                                            MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                shape = CircleShape, // 100% Full-Capsule Geometry
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
-                    focusedBorderColor = Color.Transparent,
-                    unfocusedBorderColor = Color.Transparent
-                ),
-                textStyle = MaterialTheme.typography.bodyMedium
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // 3. Far-Right: Spinning Settings Anchor
-            IconButton(
-                onClick = onSettingsClick,
-                modifier = Modifier.size(40.dp)
-            ) {
-                Icon(
-                    AppIcons.Settings,
-                    contentDescription = "Settings",
-                    modifier = Modifier
-                        .size(24.dp)
-                        .rotate(settingsRotation),
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
             }
         }
     }

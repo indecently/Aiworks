@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
+import kotlinx.coroutines.delay
 import com.birkneo.Aiworks.ai.ModelStatus
 import com.birkneo.Aiworks.data.ChatMessage
 import com.birkneo.Aiworks.data.MessageRole
@@ -90,6 +91,10 @@ fun ChatScreen(
     var showClearConfirmation by remember { mutableStateOf(false) }
     var showUndoConfirmation by remember { mutableStateOf(false) }
     var messageToDelete by remember { mutableStateOf<ChatMessage?>(null) }
+    
+    var showReasoningToast by remember { mutableStateOf(false) }
+    val session by viewModel.getSessionFlow(sessionId).collectAsStateWithLifecycle(initialValue = null)
+    val isReasoningMode = session?.isReasoningMode == true
     
     // Settings Spin State & Navigation Guard
     var isSettingsSpinning by remember { mutableStateOf(false) }
@@ -323,6 +328,13 @@ fun ChatScreen(
                                 micPermission.launchPermissionRequest()
                             }
                         },
+                        isReasoningMode = isReasoningMode,
+                        onReasoningToggle = { enabled ->
+                            viewModel.updateSessionReasoning(sessionId, enabled)
+                            if (enabled) {
+                                showReasoningToast = true
+                            }
+                        },
                         isGenerating = isGenerating,
                         isRecording = isRecording,
                         amplitude = recordingAmplitude,
@@ -378,6 +390,33 @@ fun ChatScreen(
                 }
             }
             
+            // Reasoning Toast
+            Box(modifier = Modifier.fillMaxSize().padding(bottom = 140.dp), contentAlignment = Alignment.BottomCenter) {
+                AnimatedVisibility(
+                    visible = showReasoningToast,
+                    enter = fadeIn() + expandVertically(),
+                    exit = fadeOut() + shrinkVertically()
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        tonalElevation = 6.dp
+                    ) {
+                        Text(
+                            "Deep reasoning enabled.",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                    
+                    LaunchedEffect(Unit) {
+                        delay(2000)
+                        showReasoningToast = false
+                    }
+                }
+            }
+
             if (showClearConfirmation) {
                 AlertDialog(
                     onDismissRequest = { showClearConfirmation = false },

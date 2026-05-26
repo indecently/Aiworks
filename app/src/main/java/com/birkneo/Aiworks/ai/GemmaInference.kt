@@ -46,10 +46,25 @@ class GemmaInference(private val context: Context) {
     private var engine: Engine? = null
     private var conversation: Conversation? = null
     private var currentModelPath: String? = null
-    private val loadMutex = Mutex()
+    var currentMaxTokens: Int = 2048
+    private var currentAccelerator: String = "GPU"
+    val loadMutex = Mutex()
 
     private val powerManager by lazy { context.getSystemService(Context.POWER_SERVICE) as PowerManager }
-    
+
+    fun isNpuSupported(): Boolean {
+        // Check if NPU dispatch libraries actually exist to avoid native crashes
+        val nativeLibDir = context.applicationInfo.nativeLibraryDir
+        return try {
+            val libFolder = File(nativeLibDir)
+            libFolder.exists() && libFolder.listFiles()?.any {
+                it.name.contains("liblitert_dispatch") || it.name.contains("libQnn")
+            } == true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
     // ARCHITECTURAL OPTIMIZATION: Separate dispatchers for User Inference and Background Tasks
     // Prevents Auto-Summarization from starving active chat responsiveness.
     private var userInferenceExecutor = createExecutorService("gemma-user-inference", Thread.MAX_PRIORITY)
@@ -72,7 +87,7 @@ class GemmaInference(private val context: Context) {
         maxTokens: Int = 512,
         topK: Int = 40,
         topP: Double = 0.95,
-        useGpu: Boolean = true,
+        accelerator: String = "GPU",
         systemInstruction: String? = null,
         onProgress: (Float) -> Unit = {}
     ): ModelStatus = loadMutex.withLock {
@@ -89,8 +104,8 @@ class GemmaInference(private val context: Context) {
                     return@withContext ModelStatus.Error("Failed to resolve model path from URI")
                 }
 
-                // Skip if already loaded and same path (Re-init conversation with new params)
-                if (engine != null && finalPath == currentModelPath) {
+                // Skip if already loaded and same path/hardware (Re-init conversation with new params)
+                if (engine != null && finalPath == currentModelPath && accelerator == currentAccelerator) {
                     resetConversation(temperature, maxTokens, topK, topP, systemInstruction)
                     return@withContext ModelStatus.Ready
                 }
@@ -112,32 +127,39 @@ class GemmaInference(private val context: Context) {
                 val memoryInfo = ActivityManager.MemoryInfo()
                 activityManager.getMemoryInfo(memoryInfo)
                 
-                // Determine context window based on available RAM
+                // Determine context window based on available RAM vs user preference
                 val totalRamGb = memoryInfo.totalMem / (1024 * 1024 * 1024)
-                val maxContextTokens = when {
+                val ramCappedMaxTokens = when {
                     totalRamGb >= 8 -> 4096
                     totalRamGb >= 4 -> 3072
                     else -> 2048 // Conservative for low-end devices
                 }
+                
+                // Use user setting but never exceed RAM capabilities to prevent OOM
+                val finalMaxTokens = if (maxTokens > ramCappedMaxTokens) ramCappedMaxTokens else maxTokens
+                currentMaxTokens = finalMaxTokens
 
-                // MULTI-STAGE INITIALIZATION: NPU -> GPU -> CPU
+                // MULTI-STAGE INITIALIZATION: USER CHOICE -> FALLBACKS
                 val backendsToTry = mutableListOf<Backend>()
-                if (useGpu && thermalStatus < PowerManager.THERMAL_STATUS_SEVERE) {
-                    // Check if NPU dispatch libraries actually exist to avoid native crashes
-                    val nativeLibDir = context.applicationInfo.nativeLibraryDir
-                    val hasNpuLibs = try {
-                        val libFolder = File(nativeLibDir)
-                        libFolder.exists() && libFolder.listFiles()?.any { 
-                            it.name.contains("liblitert_dispatch") || it.name.contains("libQnn") 
-                        } == true
-                    } catch (e: Exception) { false }
-
-                    if (hasNpuLibs) {
-                        backendsToTry.add(Backend.NPU(nativeLibDir))
+                
+                when (accelerator) {
+                    "NPU" -> {
+                        if (isNpuSupported()) {
+                            backendsToTry.add(Backend.NPU(context.applicationInfo.nativeLibraryDir))
+                        }
+                        backendsToTry.add(Backend.GPU())
+                        backendsToTry.add(Backend.CPU())
                     }
-                    backendsToTry.add(Backend.GPU())
+                    "GPU" -> {
+                        if (thermalStatus < PowerManager.THERMAL_STATUS_SEVERE) {
+                            backendsToTry.add(Backend.GPU())
+                        }
+                        backendsToTry.add(Backend.CPU())
+                    }
+                    else -> {
+                        backendsToTry.add(Backend.CPU())
+                    }
                 }
-                backendsToTry.add(Backend.CPU())
 
                 var lastError: Exception? = null
                 var initSuccess = false
@@ -149,7 +171,7 @@ class GemmaInference(private val context: Context) {
                         visionBackend = trialBackend,
                         audioBackend = Backend.CPU(),
                         cacheDir = context.cacheDir.path,
-                        maxNumTokens = maxContextTokens
+                        maxNumTokens = finalMaxTokens
                     )
 
                     // CRITICAL FIX: Initialization MUST happen on Dispatchers.IO.
@@ -181,6 +203,7 @@ class GemmaInference(private val context: Context) {
                 }
 
                 currentModelPath = finalPath
+                currentAccelerator = accelerator
 
                 resetConversation(temperature, maxTokens, topK, topP, systemInstruction)
                 ModelStatus.Ready
@@ -376,38 +399,43 @@ class GemmaInference(private val context: Context) {
     suspend fun summarize(textToSummarize: String): String? = withContext(backgroundTaskDispatcher) {
         val currentEngine = engine ?: return@withContext null
         
-        // CRITICAL: Close existing conversation first because LiteRT only supports one session at a time.
-        // Failing to do this results in FAILED_PRECONDITION: A session already exists.
-        conversation?.close()
-        conversation = null
+        // CRITICAL: LiteRT only supports one active conversation per engine instance.
+        // We MUST synchronize access to prevent background tasks from closing the user's active session.
+        loadMutex.withLock {
+            // We must close the current user conversation to free KV cache/session slots for the summary
+            // But we should ONLY do this if there's no active user inference running.
+            // Note: The UI layer's engineMutex should prevent this, but we add a safety check here.
+            conversation?.close()
+            conversation = null
 
-        val prompt = "Below is a part of a conversation history. Please write a very concise summary of the key facts, events, and names mentioned so far to help me remember the context. Do not include meta-talk, just the facts. \n\nCONVERSATION:\n$textToSummarize\n\nCONCISE SUMMARY:"
-        
-        var tempConversation: Conversation? = null
-        try {
-            tempConversation = currentEngine.createConversation(
-                ConversationConfig(
-                    samplerConfig = SamplerConfig(temperature = 0.1, topK = 1, topP = 1.0, seed = 0)
-                )
-            )
+            val prompt = "Below is a part of a conversation history. Please write a very concise summary of the key facts, events, and names mentioned so far to help me remember the context. Do not include meta-talk, just the facts. \n\nCONVERSATION:\n$textToSummarize\n\nCONCISE SUMMARY:"
             
-            val result = StringBuilder()
-            // Using a timeout or ensuring collection is robust
-            tempConversation.sendMessageAsync(prompt).collect { message ->
-                val contentsList = message.contents.contents
-                for (content in contentsList) {
-                    if (content is Content.Text) {
-                        result.append(content.text)
+            var tempConversation: Conversation? = null
+            try {
+                tempConversation = currentEngine.createConversation(
+                    ConversationConfig(
+                        samplerConfig = SamplerConfig(temperature = 0.1, topK = 1, topP = 1.0, seed = 0)
+                    )
+                )
+                
+                val result = StringBuilder()
+                // Using a timeout or ensuring collection is robust
+                tempConversation.sendMessageAsync(prompt).collect { message ->
+                    val contentsList = message.contents.contents
+                    for (content in contentsList) {
+                        if (content is Content.Text) {
+                            result.append(content.text)
+                        }
                     }
                 }
+                result.toString().trim().ifEmpty { null }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            } finally {
+                // CRITICAL: Guarantee native memory is freed to prevent OOM
+                tempConversation?.close()
             }
-            result.toString().trim().ifEmpty { null }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        } finally {
-            // CRITICAL: Guarantee native memory is freed to prevent OOM
-            tempConversation?.close()
         }
     }
 
@@ -418,53 +446,56 @@ class GemmaInference(private val context: Context) {
     suspend fun distillMemory(currentLtm: String, newSegment: String): String? = withContext(backgroundTaskDispatcher) {
         val currentEngine = engine ?: return@withContext null
         
-        conversation?.close()
-        conversation = null
+        loadMutex.withLock {
+            conversation?.close()
+            conversation = null
 
-        val prompt = """
-            Below is the 'EXISTING MEMORY' and a 'NEW CONVERSATION SEGMENT'. 
-            Your task is to merge them into a single, high-density 'CORE MEMORY'.
+            val prompt = """
+                Below is the 'EXISTING MEMORY' and a 'NEW CONVERSATION SEGMENT'. 
+                Your task is to merge them into a single, high-density 'CORE MEMORY'.
+                
+                RULES:
+                1. Retain high-value facts (user preferences, project names, established facts).
+                2. Discard transient noise (greetings, ephemeral errors, social filler).
+                3. Be extremely concise. Use short sentences.
+                4. If facts conflict, prioritize the 'NEW CONVERSATION SEGMENT'.
+
+                EXISTING MEMORY:
+                $currentLtm
+
+                NEW CONVERSATION SEGMENT:
+                $newSegment
+
+                NEW CONDENSED CORE MEMORY:
+            """.trimIndent()
             
-            RULES:
-            1. Retain high-value facts (user preferences, project names, established facts).
-            2. Discard transient noise (greetings, ephemeral errors, social filler).
-            3. Be extremely concise. Use short sentences.
-            4. If facts conflict, prioritize the 'NEW CONVERSATION SEGMENT'.
-
-            EXISTING MEMORY:
-            $currentLtm
-
-            NEW CONVERSATION SEGMENT:
-            $newSegment
-
-            NEW CONDENSED CORE MEMORY:
-        """.trimIndent()
-        
-        var tempConversation: Conversation? = null
-        try {
-            tempConversation = currentEngine.createConversation(
-                ConversationConfig(
-                    samplerConfig = SamplerConfig(temperature = 0.1, topK = 1, topP = 1.0, seed = 0)
+            var tempConversation: Conversation? = null
+            try {
+                tempConversation = currentEngine.createConversation(
+                    ConversationConfig(
+                        samplerConfig = SamplerConfig(temperature = 0.1, topK = 1, topP = 1.0, seed = 0)
+                    )
                 )
-            )
-            
-            val result = StringBuilder()
-            tempConversation.sendMessageAsync(prompt).collect { message ->
-                val contentsList = message.contents.contents
-                for (content in contentsList) {
-                    if (content is Content.Text) {
-                        result.append(content.text)
+                
+                val result = StringBuilder()
+                tempConversation.sendMessageAsync(prompt).collect { message ->
+                    val contentsList = message.contents.contents
+                    for (content in contentsList) {
+                        if (content is Content.Text) {
+                            result.append(content.text)
+                        }
                     }
                 }
+                result.toString().trim().ifEmpty { null }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                null
+            } finally {
+                tempConversation?.close()
             }
-            result.toString().trim().ifEmpty { null }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        } finally {
-            tempConversation?.close()
         }
     }
+
 
     fun getLoadedModelPath(): String? = currentModelPath
 

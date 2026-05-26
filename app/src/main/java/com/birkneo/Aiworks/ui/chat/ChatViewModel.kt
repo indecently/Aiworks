@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -67,8 +68,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     internal val _isUnlocked = MutableStateFlow(false)
     val isUnlocked: StateFlow<Boolean> = _isUnlocked.asStateFlow()
 
+    val isNpuSupported: Boolean = gemmaInference.isNpuSupported()
+
     internal val _isTransientUnlock = MutableStateFlow(false)
     val isTransientUnlock: StateFlow<Boolean> = _isTransientUnlock.asStateFlow()
+
+    internal val _pendingIncognitoChat = MutableStateFlow(false)
+    val pendingIncognitoChat: StateFlow<Boolean> = _pendingIncognitoChat.asStateFlow()
 
     val recordingAmplitude: StateFlow<Float> = audioRecorder.amplitude
         .stateIn(viewModelScope, SharingStarted.Lazily, 0f)
@@ -141,6 +147,36 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     internal val _isCompressingContext = MutableStateFlow(false)
     val isCompressingContext: StateFlow<Boolean> = _isCompressingContext.asStateFlow()
 
+    // Developer Inspection States
+    private val _lastRawPrompt = MutableStateFlow("")
+    val lastRawPrompt: StateFlow<String> = _lastRawPrompt.asStateFlow()
+
+    private val _lastContextSummary = MutableStateFlow("")
+    val lastContextSummary: StateFlow<String> = _lastContextSummary.asStateFlow()
+
+    private val _ttftMs = MutableStateFlow(0L)
+    val ttftMs: StateFlow<Long> = _ttftMs.asStateFlow()
+
+    private val _generationSpeed = MutableStateFlow(0f)
+    val generationSpeed: StateFlow<Float> = _generationSpeed.asStateFlow()
+
+    fun updateInspectionData(prompt: String, summary: String) {
+        viewModelScope.launch {
+            if (settingsManager.livePromptLogging.first()) {
+                _lastRawPrompt.value = prompt
+                _lastContextSummary.value = summary
+            } else {
+                _lastRawPrompt.value = ""
+                _lastContextSummary.value = ""
+            }
+        }
+    }
+
+    fun updateVitals(ttft: Long, speed: Float) {
+        _ttftMs.value = ttft
+        _generationSpeed.value = speed
+    }
+
     init {
         gemmaInference.cleanupMediaCache()
         val internalModelFile = File(getApplication<Application>().filesDir, "model.litertlm")
@@ -171,6 +207,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             if (!path.isNullOrEmpty() && _modelStatus.value !is ModelStatus.Ready) {
                 loadModel(path)
             }
+
+            // AUTO-RELOAD on hardware settings change
+            settingsManager.computeAccelerator
+                .drop(1) // Skip initial value
+                .collect { 
+                    val currentPath = settingsManager.modelPath.first()
+                    if (!currentPath.isNullOrEmpty()) {
+                        loadModel(currentPath)
+                    }
+                }
         }
     }
 
@@ -182,7 +228,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val topK = settingsManager.topK.first()
             val topP = settingsManager.topP.first()
             val accelerator = settingsManager.computeAccelerator.first()
-            val useGpu = accelerator == "GPU"
 
             val status = gemmaInference.loadModel(
                 modelPathOrUri = path,
@@ -190,7 +235,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 maxTokens = maxTokens,
                 topK = topK,
                 topP = topP,
-                useGpu = useGpu
+                accelerator = accelerator
             ) { progress ->
                 _modelStatus.value = ModelStatus.Loading(progress)
             }
@@ -239,6 +284,55 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setTransientUnlock(unlocked: Boolean) {
         _isTransientUnlock.value = unlocked
+    }
+
+    fun triggerIncognitoChat() {
+        _pendingIncognitoChat.value = true
+        _isTransientUnlock.value = true
+    }
+
+    fun consumeIncognitoChat() {
+        _pendingIncognitoChat.value = false
+    }
+
+    fun nukeDatabase() {
+        viewModelScope.launch(Dispatchers.IO) {
+            com.birkneo.Aiworks.data.database.ChatDatabase.getDatabase(getApplication()).clearAllTables()
+            repository.nukeVolatileMessages()
+            _currentSessionIdFlow.value = null
+        }
+    }
+
+    fun setVerboseLogging(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setVerboseLogging(enabled)
+        }
+    }
+
+    fun setLivePromptLogging(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.setLivePromptLogging(enabled)
+            if (!enabled) {
+                _lastRawPrompt.value = ""
+                _lastContextSummary.value = ""
+            }
+        }
+    }
+
+    fun updateInferenceConfig() {
+        viewModelScope.launch {
+            val temperature = settingsManager.temperature.first()
+            val maxTokens = settingsManager.maxTokens.first()
+            val topK = settingsManager.topK.first()
+            val topP = settingsManager.topP.first()
+            
+            gemmaInference.resetConversation(
+                temperature = temperature,
+                maxTokens = maxTokens,
+                topK = topK,
+                topP = topP
+            )
+        }
     }
 
     suspend fun verifyAndUnlock(password: String): Boolean {

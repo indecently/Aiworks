@@ -149,13 +149,10 @@ fun ChatViewModel.generateLongTermMemory(sessionId: String) {
                 if (textToSummarize.isBlank()) return@withLock
 
                 val currentMemory = session?.longTermMemory ?: ""
-                val newSummary = if (currentMemory.length > 1500) {
+                val newSummary = if (currentMemory.isNotEmpty()) {
                     gemmaInference.distillMemory(currentMemory, textToSummarize)
                 } else {
-                    val summary = gemmaInference.summarize(textToSummarize)
-                    if (summary != null) {
-                        if (currentMemory.isEmpty()) summary else "$currentMemory\n$summary"
-                    } else null
+                    gemmaInference.summarize(textToSummarize)
                 }
                 
                 if (newSummary != null) {

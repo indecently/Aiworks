@@ -53,14 +53,14 @@ fun ModelSetupPage(
         }
         Spacer(modifier = Modifier.height(40.dp))
         Text(
-            text = "Load Your AI Engine",
+            text = "Pick a brain",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.ExtraBold,
             textAlign = TextAlign.Center
         )
         Spacer(modifier = Modifier.height(12.dp))
         Text(
-            text = "To continue, you can select a compatible .bin or .litertlm file from your storage. or just skip to do it later.",
+            text = "To start thinking, you need a model file. Pick a compatible .bin or .litertlm file from your storage.",
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -87,7 +87,7 @@ fun ModelSetupPage(
                 )
                 Spacer(modifier = Modifier.width(16.dp))
                 Text(
-                    text = "This app is optimized specifically for Gemma 4 E2B.\n\nOther .litertlm models may load, but image and audio understanding, and overall performance are tuned for Gemma 4 and agentic multimodel AI only.",
+                    text = "We recommend Gemma 4 E2B. It's the secret sauce for our agentic and multimodal features.",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     lineHeight = 18.sp

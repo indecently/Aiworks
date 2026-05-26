@@ -59,14 +59,14 @@ fun PermissionsPage() {
         Spacer(modifier = Modifier.height(48.dp))
         
         Text(
-            text = "Permissions",
+            text = "Keys to the castle",
             style = MaterialTheme.typography.headlineLarge,
             fontWeight = FontWeight.ExtraBold,
             textAlign = TextAlign.Center
         )
         
         Text(
-            text = "To provide a full experience, We need to access to your camera and microphone. or not. its up to you.",
+            text = "We need your camera to 'see' and mic to 'hear'. Everything is processed locally, so don't worry—we're not listening in.",
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -94,7 +94,7 @@ fun PermissionsPage() {
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        "Well that turned out well, lets continue.", 
+                        "Awesome. We're in.",
                         fontWeight = FontWeight.Bold, 
                         color = MaterialTheme.colorScheme.secondary,
                         textAlign = TextAlign.Center

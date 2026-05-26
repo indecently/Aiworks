@@ -29,6 +29,8 @@ class SettingsManager(private val context: Context) {
         val COMPUTE_ACCELERATOR = stringPreferencesKey("compute_accelerator")
         val HOME_WALLPAPER_PATH = stringPreferencesKey("home_wallpaper_path")
         val BOTTOM_SEARCH_BAR = booleanPreferencesKey("bottom_search_bar")
+        val VERBOSE_LOGGING = booleanPreferencesKey("verbose_logging")
+        val LIVE_PROMPT_LOGGING = booleanPreferencesKey("live_prompt_logging")
     }
 
     val modelPath: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -41,6 +43,14 @@ class SettingsManager(private val context: Context) {
 
     val bottomSearchBar: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[BOTTOM_SEARCH_BAR] ?: false
+    }
+
+    val verboseLogging: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[VERBOSE_LOGGING] ?: false
+    }
+
+    val livePromptLogging: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[LIVE_PROMPT_LOGGING] ?: false
     }
 
     val temperature: Flow<Double> = context.dataStore.data.map { preferences ->
@@ -128,6 +138,18 @@ class SettingsManager(private val context: Context) {
     suspend fun setBottomSearchBar(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[BOTTOM_SEARCH_BAR] = enabled
+        }
+    }
+
+    suspend fun setVerboseLogging(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[VERBOSE_LOGGING] = enabled
+        }
+    }
+
+    suspend fun setLivePromptLogging(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[LIVE_PROMPT_LOGGING] = enabled
         }
     }
 

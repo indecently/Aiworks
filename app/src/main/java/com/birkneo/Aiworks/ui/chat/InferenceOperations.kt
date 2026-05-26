@@ -1,5 +1,6 @@
 package com.birkneo.Aiworks.ui.chat
 
+import android.util.Log
 import androidx.lifecycle.viewModelScope
 import com.birkneo.Aiworks.ai.ModelPersistenceService
 import com.birkneo.Aiworks.ai.ModelStatus
@@ -17,7 +18,7 @@ internal suspend fun ChatViewModel.prepareInferenceForSession(sessionId: String,
     val temp = settingsManager.temperature.first()
     val topK = settingsManager.topK.first()
     val topP = settingsManager.topP.first()
-    val maxTokensTotal = settingsManager.maxTokens.first()
+    val maxTokensTotal = gemmaInference.currentMaxTokens
 
     // FIXED: Now checking if parameters changed to ensure Settings are applied mid-session
     if (inferenceSessionId == sessionId && 
@@ -32,7 +33,8 @@ internal suspend fun ChatViewModel.prepareInferenceForSession(sessionId: String,
     val longTermMemory = session?.longTermMemory ?: ""
     val persona = session?.persona ?: ""
     
-    val contextBudget = (maxTokensTotal * 0.9).toInt()
+    // Safety buffer for system prompt and thinking tokens
+    val contextBudget = (maxTokensTotal * 0.85).toInt()
     
     val basePromptTokens = gemmaInference.estimateTokens(PromptArchitect.BASE_SYSTEM_PROMPT)
     val instructionsTokens = gemmaInference.estimateTokens(persona)
@@ -42,16 +44,23 @@ internal suspend fun ChatViewModel.prepareInferenceForSession(sessionId: String,
     if (remainingBudgetForWindow < 100) remainingBudgetForWindow = 100
 
     val historyToInclude = mutableListOf<String>()
-    var historyTokens = 0
     
     val recentMsgs = repository.getRecentMessages(sessionId, 50).reversed()
+    
+    // OPTIMIZATION: Convert remaining token budget to a character budget once 
+    // to avoid calling estimateTokens() O(n) times in the loop. 
+    // We assume ~3 characters per token + a 15% safety margin.
+    var charBudget = (remainingBudgetForWindow * 2.8).toInt() 
+    var currentChars = 0
+
     for (msg in recentMsgs) {
         if (msg.id == excludeMsgId) continue
         val messageText = "${msg.role}: ${msg.text}"
-        val tokens = gemmaInference.estimateTokens(messageText)
-        if (historyTokens + tokens < remainingBudgetForWindow) {
+        val msgLength = messageText.length
+        
+        if (currentChars + msgLength < charBudget) {
             historyToInclude.add(0, messageText)
-            historyTokens += tokens
+            currentChars += msgLength
         } else break
     }
     
@@ -62,6 +71,12 @@ internal suspend fun ChatViewModel.prepareInferenceForSession(sessionId: String,
         longTermMemory = longTermMemory,
         persona = persona,
         recentHistoryText = recentHistoryText
+    )
+    
+    // Capture inspection data
+    updateInspectionData(
+        prompt = systemPrompt,
+        summary = "Long Term Memory: $longTermMemory\nRecent History: $recentHistoryText"
     )
     
     // OPTIMIZATION: Precise KV Cache management. 
@@ -98,7 +113,10 @@ internal fun ChatViewModel.retriggerInference(text: String, imageUri: String?, a
     inferenceJob = viewModelScope.launch {
         // PERF: Move heavy processing to a background thread to keep UI thread idle for drawing
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
-            engineMutex.withLock {
+            // CRITICAL: Synchronize with background LTM tasks using the engine-level loadMutex.
+            // This prevents background summarization from closing the session mid-inference.
+            gemmaInference.loadMutex.withLock {
+                engineMutex.withLock {
                 val assistantMessageId = UUID.randomUUID().toString()
                 var retryCount = 0
                 val maxRetries = 2
@@ -127,11 +145,21 @@ internal fun ChatViewModel.retriggerInference(text: String, imageUri: String?, a
                                 var lastUiUpdateTimestamp = 0L
                                 val UI_THROTTLE_MS = 32L // ~30 FPS throttle
 
+                                val startTime = System.currentTimeMillis()
+                                var firstTokenTime = 0L
+                                var tokenCount = 0
+
                                 gemmaInference.sendMessage(text, imageUri, audioUri)?.collect { token ->
+                                    if (firstTokenTime == 0L) {
+                                        firstTokenTime = System.currentTimeMillis()
+                                        updateVitals(firstTokenTime - startTime, 0f)
+                                    }
+                                    tokenCount++
+
                                     fullResponseAccumulator.append(token)
                                     val currentFullText = fullResponseAccumulator.toString()
                                     
-                                    // 1. Tag Detection
+                                    // Reasoning Detection (Legacy support for reasoning tags)
                                     if (!thoughtTagFound && currentFullText.contains("<|channel>thought", ignoreCase = true)) {
                                         thoughtTagFound = true
                                     }
@@ -141,22 +169,17 @@ internal fun ChatViewModel.retriggerInference(text: String, imageUri: String?, a
                                         _streamingMessage.update { it?.copy(isThinking = false) }
                                     }
 
-                                    // 2. UI Updates (Throttled)
+                                    // UI Update Dispatcher
                                     val now = System.currentTimeMillis()
                                     if (now - lastUiUpdateTimestamp >= UI_THROTTLE_MS || endTagDetected) {
                                         if (isDeepReasoning) {
-                                            if (endTagDetected) {
-                                                // Extract final answer after the LAST instance of the end tag
-                                                val parts = currentFullText.split(Regex("<channel|>", RegexOption.IGNORE_CASE), limit = 2)
-                                                if (parts.size > 1) {
-                                                    _streamingMessage.update { it?.copy(text = parts[1].trimStart()) }
-                                                }
+                                            val parts = currentFullText.split(Regex("<channel|>", RegexOption.IGNORE_CASE), limit = 2)
+                                            if (parts.size > 1) {
+                                                _streamingMessage.update { it?.copy(text = parts[1].trimStart(), isThinking = false) }
                                             } else {
-                                                // MASK ALL OUTPUT while reasoning is active
                                                 _streamingMessage.update { it?.copy(text = "", isThinking = true) }
                                             }
                                         } else {
-                                            // Standard mode: Stream normally
                                             _streamingMessage.update { it?.copy(text = currentFullText.trimStart()) }
                                         }
                                         lastUiUpdateTimestamp = now
@@ -167,21 +190,26 @@ internal fun ChatViewModel.retriggerInference(text: String, imageUri: String?, a
                                 val finalResponse = if (isDeepReasoning && endTagDetected) {
                                     finalFullText.split(Regex("<channel|>", RegexOption.IGNORE_CASE), limit = 2).lastOrNull()?.trim() ?: ""
                                 } else if (isDeepReasoning && !thoughtTagFound && finalFullText.length > 5 && !finalFullText.contains("<")) {
-                                    // RECOVERY: If mode is on but model failed to use tags, show content anyway
                                     finalFullText.trim()
                                 } else {
                                     finalFullText.trim()
                                 }
+                                
                                 if (finalResponse.isNotBlank()) {
+                                    val endTime = System.currentTimeMillis()
+                                    val totalDuration = (endTime - firstTokenTime) / 1000f
+                                    if (totalDuration > 0) {
+                                        updateVitals(firstTokenTime - startTime, tokenCount / totalDuration)
+                                    }
+
                                     repository.insertMessage(sessionId, ChatMessage(
                                         id = assistantMessageId,
                                         role = MessageRole.ASSISTANT,
                                         text = finalResponse
                                     ))
                                     success = true
-                                } else {
-                                    throw IllegalStateException("AI generated an empty response.")
                                 }
+                                return@withLock
                             } else {
                                 throw IllegalStateException("AI Engine is not ready.")
                             }
@@ -205,4 +233,5 @@ internal fun ChatViewModel.retriggerInference(text: String, imageUri: String?, a
             }
         }
     }
+}
 }

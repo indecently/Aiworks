@@ -120,6 +120,8 @@ fun ChatInput(
     onCameraClick: () -> Unit,
     onGalleryClick: () -> Unit,
     onRecordToggle: (Boolean) -> Unit,
+    isReasoningMode: Boolean,
+    onReasoningToggle: (Boolean) -> Unit,
     isGenerating: Boolean,
     isRecording: Boolean,
     amplitude: Float,
@@ -199,15 +201,61 @@ fun ChatInput(
                                     disabledIndicatorColor = Color.Transparent
                                 ),
                                 trailingIcon = {
-                                    IconButton(
-                                        onClick = {
-                                            view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
-                                            onCameraClick()
-                                        }, 
-                                        enabled = enabled && !isGenerating,
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier.padding(end = 4.dp)
                                     ) {
-                                        Icon(AppIcons.Camera, contentDescription = "Camera", tint = MaterialTheme.colorScheme.outline)
+                                        // Thinking Pill Toggle
+                                        Surface(
+                                            onClick = {
+                                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                                onReasoningToggle(!isReasoningMode)
+                                            },
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = if (isReasoningMode) 
+                                                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) 
+                                            else 
+                                                Color.Transparent,
+                                            border = if (isReasoningMode)
+                                                androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                                            else
+                                                null,
+                                            modifier = Modifier.height(32.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(horizontal = 8.dp)
+                                            ) {
+                                                Icon(
+                                                    AppIcons.Psychology, 
+                                                    contentDescription = null, 
+                                                    modifier = Modifier.size(16.dp),
+                                                    tint = if (isReasoningMode) 
+                                                        MaterialTheme.colorScheme.primary 
+                                                    else 
+                                                        MaterialTheme.colorScheme.outline
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    "Thinking",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = if (isReasoningMode) 
+                                                        MaterialTheme.colorScheme.primary 
+                                                    else 
+                                                        MaterialTheme.colorScheme.outline
+                                                )
+                                            }
+                                        }
+
+                                        IconButton(
+                                            onClick = {
+                                                view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                                                onCameraClick()
+                                            }, 
+                                            enabled = enabled && !isGenerating
+                                        ) {
+                                            Icon(AppIcons.Camera, contentDescription = "Camera", tint = MaterialTheme.colorScheme.outline)
+                                        }
                                     }
                                 },
                                 maxLines = 4

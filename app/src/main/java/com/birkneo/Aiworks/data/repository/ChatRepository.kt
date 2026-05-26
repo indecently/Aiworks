@@ -95,6 +95,11 @@ class ChatRepository(private val chatDao: ChatDao) {
     suspend fun updateSessionPersona(id: String, persona: String?) = chatDao.updateSessionPersona(id, persona)
     suspend fun updateSessionReasoning(id: String, enabled: Boolean) = chatDao.updateSessionReasoning(id, enabled)
     suspend fun deleteIncognitoSessions() = chatDao.deleteIncognitoSessions()
+
+    fun nukeVolatileMessages() {
+        _volatileMessages.update { emptyMap() }
+    }
+
     suspend fun getLastMessage(sessionId: String) = chatDao.getLastMessageForSession(sessionId)?.toDomain()
     suspend fun deleteMessagesAfter(sessionId: String, timestamp: Long) = chatDao.deleteMessagesAfter(sessionId, timestamp)
     suspend fun updateMessageText(messageId: String, text: String) = chatDao.updateMessageText(messageId, text)
