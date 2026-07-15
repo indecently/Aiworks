@@ -37,6 +37,11 @@ com.birkneo.Aiworks
 
 ### 1. AI Engine (`com.birkneo.Aiworks.ai`)
 - **`GemmaInference.kt`**: The heart of the app. Manages the lifecycle of the LiteRT engine, handles model loading with hardware fallbacks (NPU -> GPU -> CPU), and manages the KV cache for efficient multi-turn conversations.
+    - **Concurrency Model**: Uses a strict `loadMutex` -> `engineMutex` hierarchy.
+    - **Internal Methods**: Provides `summarizeInternal` and `distillMemoryInternal` for background tasks to perform inference without re-acquiring `loadMutex` (preventing deadlocks).
+- **`EmbeddingInference.kt`**: Manages the TFLite-based embedding model for RAG.
+    - **LRU Caching**: Implements a thread-safe cache for fragment embeddings to minimize redundant TFLite inferences.
+    - **Word-Hash Tokenization**: Uses a heuristic word-hashing strategy to map text to the model's vocabulary space.
 - **`PromptArchitect.kt`**: Handles the construction of system prompts, integrating Long-Term Memory (LTM) and personas into the context window.
 - **Recursive Condensation**: The engine implements a background "summarization demon" that distills history into core memory pills to prevent context overflow.
 

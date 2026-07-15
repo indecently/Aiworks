@@ -134,38 +134,50 @@ fun ChatViewModel.clearChatMemory(sessionId: String) {
 }
 
 fun ChatViewModel.generateLongTermMemory(sessionId: String) {
+    // PROACTIVE: Avoid starting summarization if the user is active or recording
+    if (isGenerating.value || isRecording.value) {
+        android.util.Log.d("ChatViewModel", "Deferring LTM generation: User is active.")
+        return
+    }
+
     viewModelScope.launch {
-        engineMutex.withLock {
-            val session = repository.getSessionById(sessionId)
-            val msgList = repository.getRecentMessages(sessionId, 10)
-            
-            if (msgList.size < 2) return@withLock 
-            
-            _isCompressingContext.value = true
-            try {
-                val textToSummarize = msgList.filter { it.text.isNotBlank() }
-                    .joinToString("\n") { "${it.role}: ${it.text}" }
-
-                if (textToSummarize.isBlank()) return@withLock
-
-                val currentMemory = session?.longTermMemory ?: ""
-                val newSummary = if (currentMemory.isNotEmpty()) {
-                    gemmaInference.distillMemory(currentMemory, textToSummarize)
-                } else {
-                    gemmaInference.summarize(textToSummarize)
-                }
+        // CRITICAL: Strict mutex ordering (loadMutex -> engineMutex) to match retriggerInference
+        gemmaInference.loadMutex.withLock {
+            engineMutex.withLock {
+                val session = repository.getSessionById(sessionId)
+                val msgList = repository.getRecentMessages(sessionId, 10)
                 
-                if (newSummary != null) {
-                    repository.updateSessionMemory(sessionId, newSummary)
-                }
+                if (msgList.size < 2) return@withLock 
+                
+                _isCompressingContext.value = true
+                try {
+                    val textToSummarize = msgList.filter { it.text.isNotBlank() }
+                        .joinToString("\n") { "${it.role}: ${it.text}" }
 
-                if (currentSessionId == sessionId) {
-                    cachedSystemPrompt = null
+                    if (textToSummarize.isBlank()) return@withLock
+
+                    val currentMemory = session?.longTermMemory ?: ""
+                    
+                    android.util.Log.d("ChatViewModel", "Starting LTM distillation...")
+                    val newSummary = if (currentMemory.isNotEmpty()) {
+                        gemmaInference.distillMemoryInternal(currentMemory, textToSummarize)
+                    } else {
+                        gemmaInference.summarizeInternal(textToSummarize)
+                    }
+                    
+                    if (newSummary != null) {
+                        repository.updateSessionMemory(sessionId, newSummary)
+                        android.util.Log.d("ChatViewModel", "LTM updated successfully.")
+                        // Only invalidate the prompt cache AFTER successful update
+                        if (currentSessionId == sessionId) {
+                            cachedSystemPrompt = null
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("ChatViewModel", "LTM generation failed", e)
+                } finally {
+                    _isCompressingContext.value = false
                 }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                _isCompressingContext.value = false
             }
         }
     }

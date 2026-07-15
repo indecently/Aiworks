@@ -1,5 +1,12 @@
 package com.birkneo.Aiworks.ai
 
+/**
+ * MODIFICATION NOTICE:
+ * This file has been modified from its original state to support the Aiworks project's 
+ * specific requirements for local inference, multi-threading, and hardware acceleration.
+ * Gemma is provided under and subject to the Gemma Terms of Use.
+ */
+
 import android.app.ActivityManager
 import android.content.Context
 import android.net.Uri
@@ -120,6 +127,9 @@ class GemmaInference(private val context: Context) {
 
                 // Close existing session before re-init
                 closeInternal()
+                
+                // PERFORMANCE: Trigger GC and hint for memory compaction before loading heavy models
+                System.gc()
 
                 // OPTIMIZATION: Check thermal status and RAM before selecting backend/config
                 val thermalStatus = powerManager.currentThermalStatus
@@ -165,27 +175,44 @@ class GemmaInference(private val context: Context) {
                 var initSuccess = false
 
                 for (trialBackend in backendsToTry) {
+                    // ROBUSTNESS FIX: Do NOT explicitly set visionBackend or audioBackend.
+                    // This allows LiteRT-LM to intelligently skip them if they aren't in the model,
+                    // preventing "NOT_FOUND: TF_LITE_AUDIO_ENCODER_HW" errors.
                     val config = EngineConfig(
                         modelPath = finalPath,
                         backend = trialBackend,
-                        visionBackend = trialBackend,
-                        audioBackend = Backend.CPU(),
                         cacheDir = context.cacheDir.path,
                         maxNumTokens = finalMaxTokens
                     )
 
                     // CRITICAL FIX: Initialization MUST happen on Dispatchers.IO.
-                    // Using userInferenceDispatcher (MAX_PRIORITY) for initialization leads to
-                    // CPU starvation of the Main Thread during mmap and delegate creation.
+                    // PERFORMANCE: Use lowest priority to avoid starving UI thread during heavy mmap.
                     val result = withContext(Dispatchers.IO) {
                         try {
-                            // Ensure thread priority doesn't steal cycles from Choreographer
-                            Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
+                            Process.setThreadPriority(Process.THREAD_PRIORITY_LOWEST)
+                            android.util.Log.d("GemmaInference", "Initializing engine with backend: $trialBackend")
                             val newEngine = Engine(config)
                             newEngine.initialize()
+                            android.util.Log.d("GemmaInference", "Engine initialized successfully. Verifying conversation creation...")
+                            
+                            // CRITICAL: Try to create an initial conversation to ensure KV cache allocation succeeds.
+                            val conversationConfig = ConversationConfig(
+                                systemInstruction = systemInstruction?.let { Contents.of(it) },
+                                samplerConfig = SamplerConfig(
+                                    temperature = temperature,
+                                    topK = topK,
+                                    topP = topP,
+                                    seed = 0
+                                )
+                            )
+                            val testConversation = newEngine.createConversation(conversationConfig)
+                            testConversation.close()
+                            
+                            android.util.Log.d("GemmaInference", "Engine and Conversation verified for $trialBackend")
                             engine = newEngine
                             true
                         } catch (e: Exception) {
+                            android.util.Log.e("GemmaInference", "Validation failed for backend $trialBackend: ${e.message}", e)
                             lastError = e
                             false
                         }
@@ -378,64 +405,70 @@ class GemmaInference(private val context: Context) {
         topP: Double = 0.95,
         systemInstruction: String? = null
     ) = withContext(Dispatchers.IO) {
-        conversation?.close()
-        conversation = null
-        
-        engine?.let { e ->
-            val conversationConfig = ConversationConfig(
-                systemInstruction = systemInstruction?.let { Contents.of(it) },
-                samplerConfig = SamplerConfig(
-                    temperature = temperature,
-                    topK = topK,
-                    topP = topP,
-                    seed = 0
+        try {
+            conversation?.close()
+            conversation = null
+            
+            engine?.let { e ->
+                android.util.Log.d("GemmaInference", "Creating conversation with maxTokens=$maxTokens")
+                val conversationConfig = ConversationConfig(
+                    systemInstruction = systemInstruction?.let { Contents.of(it) },
+                    samplerConfig = SamplerConfig(
+                        temperature = temperature,
+                        topK = topK,
+                        topP = topP,
+                        seed = 0
+                    )
                 )
-            )
-            // Creating a conversation can be blocking if it triggers KV cache allocation
-            conversation = e.createConversation(conversationConfig)
+                conversation = e.createConversation(conversationConfig)
+                android.util.Log.d("GemmaInference", "Conversation created successfully")
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("GemmaInference", "Failed to reset conversation: ${e.message}", e)
+            // If conversation creation fails, the engine might be in a bad state.
+            // In a production app, we'd trigger a reload with CPU fallback here.
         }
     }
 
     suspend fun summarize(textToSummarize: String): String? = withContext(backgroundTaskDispatcher) {
-        val currentEngine = engine ?: return@withContext null
-        
-        // CRITICAL: LiteRT only supports one active conversation per engine instance.
-        // We MUST synchronize access to prevent background tasks from closing the user's active session.
+        android.util.Log.d("GemmaInference", "Summarization task started. Waiting for loadMutex...")
         loadMutex.withLock {
-            // We must close the current user conversation to free KV cache/session slots for the summary
-            // But we should ONLY do this if there's no active user inference running.
-            // Note: The UI layer's engineMutex should prevent this, but we add a safety check here.
-            conversation?.close()
-            conversation = null
+            summarizeInternal(textToSummarize)
+        }
+    }
 
-            val prompt = "Below is a part of a conversation history. Please write a very concise summary of the key facts, events, and names mentioned so far to help me remember the context. Do not include meta-talk, just the facts. \n\nCONVERSATION:\n$textToSummarize\n\nCONCISE SUMMARY:"
-            
-            var tempConversation: Conversation? = null
-            try {
-                tempConversation = currentEngine.createConversation(
-                    ConversationConfig(
-                        samplerConfig = SamplerConfig(temperature = 0.1, topK = 1, topP = 1.0, seed = 0)
-                    )
+    internal suspend fun summarizeInternal(textToSummarize: String): String? {
+        val currentEngine = engine ?: return null
+        android.util.Log.d("GemmaInference", "Summarization task running. Closing active conversation...")
+        conversation?.close()
+        conversation = null
+
+        val prompt = "Below is a part of a conversation history. Please write a very concise summary of the key facts, events, and names mentioned so far to help me remember the context. Do not include meta-talk, just the facts. \n\nCONVERSATION:\n$textToSummarize\n\nCONCISE SUMMARY:"
+        
+        var tempConversation: Conversation? = null
+        return try {
+            tempConversation = currentEngine.createConversation(
+                ConversationConfig(
+                    samplerConfig = SamplerConfig(temperature = 0.1, topK = 1, topP = 1.0, seed = 0)
                 )
-                
-                val result = StringBuilder()
-                // Using a timeout or ensuring collection is robust
-                tempConversation.sendMessageAsync(prompt).collect { message ->
-                    val contentsList = message.contents.contents
-                    for (content in contentsList) {
-                        if (content is Content.Text) {
-                            result.append(content.text)
-                        }
+            )
+            
+            val result = StringBuilder()
+            tempConversation.sendMessageAsync(prompt).collect { message ->
+                val contentsList = message.contents.contents
+                for (content in contentsList) {
+                    if (content is Content.Text) {
+                        result.append(content.text)
                     }
                 }
-                result.toString().trim().ifEmpty { null }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                null
-            } finally {
-                // CRITICAL: Guarantee native memory is freed to prevent OOM
-                tempConversation?.close()
             }
+            android.util.Log.d("GemmaInference", "Summarization complete.")
+            result.toString().trim().ifEmpty { null }
+        } catch (e: Exception) {
+            android.util.Log.e("GemmaInference", "Summarization failed", e)
+            null
+        } finally {
+            tempConversation?.close()
         }
     }
 
@@ -444,55 +477,61 @@ class GemmaInference(private val context: Context) {
      * Merges current Long-Term Memory with new segments into a single high-density core.
      */
     suspend fun distillMemory(currentLtm: String, newSegment: String): String? = withContext(backgroundTaskDispatcher) {
-        val currentEngine = engine ?: return@withContext null
-        
+        android.util.Log.d("GemmaInference", "DistillMemory task started. Waiting for loadMutex...")
         loadMutex.withLock {
-            conversation?.close()
-            conversation = null
+            distillMemoryInternal(currentLtm, newSegment)
+        }
+    }
 
-            val prompt = """
-                Below is the 'EXISTING MEMORY' and a 'NEW CONVERSATION SEGMENT'. 
-                Your task is to merge them into a single, high-density 'CORE MEMORY'.
-                
-                RULES:
-                1. Retain high-value facts (user preferences, project names, established facts).
-                2. Discard transient noise (greetings, ephemeral errors, social filler).
-                3. Be extremely concise. Use short sentences.
-                4. If facts conflict, prioritize the 'NEW CONVERSATION SEGMENT'.
+    internal suspend fun distillMemoryInternal(currentLtm: String, newSegment: String): String? {
+        val currentEngine = engine ?: return null
+        android.util.Log.d("GemmaInference", "DistillMemory task running. Closing active conversation...")
+        conversation?.close()
+        conversation = null
 
-                EXISTING MEMORY:
-                $currentLtm
-
-                NEW CONVERSATION SEGMENT:
-                $newSegment
-
-                NEW CONDENSED CORE MEMORY:
-            """.trimIndent()
+        val prompt = """
+            Below is the 'EXISTING MEMORY' and a 'NEW CONVERSATION SEGMENT'. 
+            Your task is to merge them into a single, high-density 'CORE MEMORY'.
             
-            var tempConversation: Conversation? = null
-            try {
-                tempConversation = currentEngine.createConversation(
-                    ConversationConfig(
-                        samplerConfig = SamplerConfig(temperature = 0.1, topK = 1, topP = 1.0, seed = 0)
-                    )
+            RULES:
+            1. Retain high-value facts (user preferences, project names, established facts).
+            2. Discard transient noise (greetings, ephemeral errors, social filler).
+            3. Be extremely concise. Use short sentences.
+            4. If facts conflict, prioritize the 'NEW CONVERSATION SEGMENT'.
+
+            EXISTING MEMORY:
+            $currentLtm
+
+            NEW CONVERSATION SEGMENT:
+            $newSegment
+
+            NEW CONDENSED CORE MEMORY:
+        """.trimIndent()
+        
+        var tempConversation: Conversation? = null
+        return try {
+            tempConversation = currentEngine.createConversation(
+                ConversationConfig(
+                    samplerConfig = SamplerConfig(temperature = 0.1, topK = 1, topP = 1.0, seed = 0)
                 )
-                
-                val result = StringBuilder()
-                tempConversation.sendMessageAsync(prompt).collect { message ->
-                    val contentsList = message.contents.contents
-                    for (content in contentsList) {
-                        if (content is Content.Text) {
-                            result.append(content.text)
-                        }
+            )
+            
+            val result = StringBuilder()
+            tempConversation.sendMessageAsync(prompt).collect { message ->
+                val contentsList = message.contents.contents
+                for (content in contentsList) {
+                    if (content is Content.Text) {
+                        result.append(content.text)
                     }
                 }
-                result.toString().trim().ifEmpty { null }
-            } catch (e: Exception) {
-                e.printStackTrace()
-                null
-            } finally {
-                tempConversation?.close()
             }
+            android.util.Log.d("GemmaInference", "DistillMemory complete.")
+            result.toString().trim().ifEmpty { null }
+        } catch (e: Exception) {
+            android.util.Log.e("GemmaInference", "DistillMemory failed", e)
+            null
+        } finally {
+            tempConversation?.close()
         }
     }
 

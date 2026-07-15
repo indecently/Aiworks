@@ -44,6 +44,7 @@ fun SettingsScreen(
     // Isolate Localized Expansion States
     var securityExpanded by remember { mutableStateOf(false) }
     var modelExpanded by remember { mutableStateOf(false) }
+    var hfExpanded by remember { mutableStateOf(false) }
     var inferenceExpanded by remember { mutableStateOf(false) }
     var hardwareExpanded by remember { mutableStateOf(false) }
     var wallpaperExpanded by remember { mutableStateOf(false) }
@@ -87,6 +88,15 @@ fun SettingsScreen(
                     },
                     modelPath = modelPath,
                     modelStatus = modelStatus
+                )
+
+                HuggingFaceSection(
+                    viewModel = viewModel,
+                    expanded = hfExpanded,
+                    onExpandToggle = {
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        hfExpanded = !hfExpanded
+                    }
                 )
 
                 InferenceSection(

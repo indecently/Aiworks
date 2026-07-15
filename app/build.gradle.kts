@@ -13,8 +13,8 @@ android {
         applicationId = "com.birkneo.Aiworks"
         minSdk = 35
         targetSdk = 37
-        versionCode = 9
-        versionName = "0.7.0.5"
+        versionCode = 10
+        versionName = "0.8.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         
@@ -41,6 +41,16 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+        }
+    }
+
+    androidResources {
+        noCompress += "tflite"
     }
 }
 
@@ -75,7 +85,14 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.core)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.okhttp)
     implementation(libs.litertlm.android)
+    implementation(libs.mediapipe.tasks.text)
+    implementation(libs.litert.gpu)
+    implementation(libs.tensorflow.lite)
+    implementation(libs.tensorflow.lite.gpu)
+    implementation(libs.tensorflow.lite.gpu.api)
     implementation(libs.material)
     testImplementation(libs.androidx.core)
     testImplementation(libs.androidx.junit)

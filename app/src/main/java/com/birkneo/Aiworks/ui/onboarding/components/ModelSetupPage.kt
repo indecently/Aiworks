@@ -124,6 +124,22 @@ fun ModelSetupPage(
                         modifier = Modifier.fillMaxWidth()
                     )
                 } else {
+                    if (modelStatus is ModelStatus.Error) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
+                        ) {
+                            Text(
+                                text = modelStatus.message,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.labelMedium,
+                                modifier = Modifier.padding(12.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+
                     Button(
                         onClick = {
                             view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
@@ -137,7 +153,11 @@ fun ModelSetupPage(
                     ) {
                         Icon(AppIcons.Upload, contentDescription = null, modifier = Modifier.size(20.dp))
                         Spacer(modifier = Modifier.width(12.dp))
-                        Text("Select Model File", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            if (modelStatus is ModelStatus.Error) "Try Another Model" else "Select Model File",
+                            fontWeight = FontWeight.Bold, 
+                            style = MaterialTheme.typography.titleMedium
+                        )
                     }
                 }
 

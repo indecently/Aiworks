@@ -31,6 +31,7 @@ class SettingsManager(private val context: Context) {
         val BOTTOM_SEARCH_BAR = booleanPreferencesKey("bottom_search_bar")
         val VERBOSE_LOGGING = booleanPreferencesKey("verbose_logging")
         val LIVE_PROMPT_LOGGING = booleanPreferencesKey("live_prompt_logging")
+        val HF_ACCESS_ENABLED = booleanPreferencesKey("hf_access_enabled")
     }
 
     val modelPath: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -51,6 +52,10 @@ class SettingsManager(private val context: Context) {
 
     val livePromptLogging: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[LIVE_PROMPT_LOGGING] ?: false
+    }
+
+    val hfAccessEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[HF_ACCESS_ENABLED] ?: false
     }
 
     val temperature: Flow<Double> = context.dataStore.data.map { preferences ->
@@ -174,6 +179,12 @@ class SettingsManager(private val context: Context) {
     suspend fun setAppLockPassword(password: String) {
         context.dataStore.edit { preferences ->
             preferences[APP_LOCK_PASSWORD] = password
+        }
+    }
+
+    suspend fun setHfAccessEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[HF_ACCESS_ENABLED] = enabled
         }
     }
 }

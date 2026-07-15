@@ -14,43 +14,59 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.update
 import java.util.UUID
 
-internal suspend fun ChatViewModel.prepareInferenceForSession(sessionId: String, excludeMsgId: String? = null) {
+internal suspend fun ChatViewModel.prepareInferenceForSession(
+    sessionId: String, 
+    userInput: String = "",
+    excludeMsgId: String? = null,
+    precalculatedRagFragments: List<String>? = null
+) {
     val temp = settingsManager.temperature.first()
     val topK = settingsManager.topK.first()
     val topP = settingsManager.topP.first()
     val maxTokensTotal = gemmaInference.currentMaxTokens
 
-    // FIXED: Now checking if parameters changed to ensure Settings are applied mid-session
-    if (inferenceSessionId == sessionId && 
-        cachedSystemPrompt != null && 
-        cachedTemperature == temp &&
-        cachedTopK == topK &&
-        cachedTopP == topP &&
-        cachedMaxTokens == maxTokensTotal &&
-        gemmaInference.isConversationActive()) return
-    
     val session = repository.getSessionById(sessionId)
-    val longTermMemory = session?.longTermMemory ?: ""
+    val fullLtm = session?.longTermMemory ?: ""
     val persona = session?.persona ?: ""
+
+    // 1. Semantic RAG Retrieval
+    val ragStartTime = System.currentTimeMillis()
+    val relevantLtmFragments = precalculatedRagFragments ?: if (fullLtm.isNotEmpty() && userInput.isNotBlank()) {
+        // Split LTM into sentences/chunks for granular retrieval
+        val chunks = fullLtm.split(Regex("(?<=[.!?])\\s+"))
+            .filter { it.length > 10 }
+        
+        if (chunks.isNotEmpty()) {
+            embeddingInference.rankFragments(userInput, chunks, topK = 5)
+        } else emptyList()
+    } else emptyList()
+    val ragDuration = System.currentTimeMillis() - ragStartTime
     
-    // Safety buffer for system prompt and thinking tokens
+    // 2. Budget Calculation
+    // OPTIMIZATION: Context budget is dynamic based on RAM. 
+    // We leave 15% head room for generation.
     val contextBudget = (maxTokensTotal * 0.85).toInt()
     
-    val basePromptTokens = gemmaInference.estimateTokens(PromptArchitect.BASE_SYSTEM_PROMPT)
-    val instructionsTokens = gemmaInference.estimateTokens(persona)
-    val memoryTokens = gemmaInference.estimateTokens(longTermMemory)
+    // We construct a temporary prompt without history to estimate base overhead (system + persona + RAG)
+    val systemPromptWithoutHistory = PromptArchitect.constructSystemPrompt(
+        session = session,
+        relevantLtmFragments = relevantLtmFragments,
+        persona = persona,
+        recentHistoryText = ""
+    )
     
-    var remainingBudgetForWindow = contextBudget - basePromptTokens - instructionsTokens - memoryTokens
-    if (remainingBudgetForWindow < 100) remainingBudgetForWindow = 100
+    val baseTokens = gemmaInference.estimateTokens(systemPromptWithoutHistory)
+    var remainingBudgetForWindow = contextBudget - baseTokens
+    
+    // Guarantee at least 400 tokens for recent chat history to prevent context loss
+    if (remainingBudgetForWindow < 400) remainingBudgetForWindow = 400
 
     val historyToInclude = mutableListOf<String>()
+    // Fetch 60 messages to ensure we fill the budget if possible
+    val recentMsgs = repository.getRecentMessages(sessionId, 60).reversed()
     
-    val recentMsgs = repository.getRecentMessages(sessionId, 50).reversed()
-    
-    // OPTIMIZATION: Convert remaining token budget to a character budget once 
-    // to avoid calling estimateTokens() O(n) times in the loop. 
-    // We assume ~3 characters per token + a 15% safety margin.
-    var charBudget = (remainingBudgetForWindow * 2.8).toInt() 
+    // Use a more conservative char-to-token ratio (3.0 instead of 2.8) to avoid budget overflow
+    val charBudget = (remainingBudgetForWindow * 3.0).toInt() 
     var currentChars = 0
 
     for (msg in recentMsgs) {
@@ -66,41 +82,49 @@ internal suspend fun ChatViewModel.prepareInferenceForSession(sessionId: String,
     
     val recentHistoryText = historyToInclude.joinToString("\n")
     
-    val systemPrompt = PromptArchitect.constructSystemPrompt(
+    val finalSystemPrompt = PromptArchitect.constructSystemPrompt(
         session = session,
-        longTermMemory = longTermMemory,
+        relevantLtmFragments = relevantLtmFragments,
         persona = persona,
         recentHistoryText = recentHistoryText
     )
     
-    // Capture inspection data
+    val totalEstimatedTokens = gemmaInference.estimateTokens(finalSystemPrompt)
+
+    // Capture inspection data for the Developer Screen
     updateInspectionData(
-        prompt = systemPrompt,
-        summary = "Long Term Memory: $longTermMemory\nRecent History: $recentHistoryText"
+        prompt = finalSystemPrompt,
+        summary = """
+            RAG Pre-pass: ${ragDuration}ms
+            Relevant LTM Fragments: ${relevantLtmFragments.size}
+            Total Estimated Tokens: $totalEstimatedTokens / $maxTokensTotal
+            Recent History Messages: ${historyToInclude.size}
+            Memory Anchor Size: ${fullLtm.length} chars
+        """.trimIndent()
     )
     
     // OPTIMIZATION: Precise KV Cache management. 
     // Only reset the conversation if the actual instructions or hardware params changed.
-    if (inferenceSessionId == sessionId && 
-        cachedSystemPrompt == systemPrompt && 
+    if (inferenceSessionId == sessionId &&
+        cachedSystemPrompt == finalSystemPrompt &&
         cachedTemperature == temp &&
         cachedTopK == topK &&
         cachedTopP == topP &&
         cachedMaxTokens == maxTokensTotal &&
         gemmaInference.isConversationActive()) return
 
-    cachedSystemPrompt = systemPrompt
+    cachedSystemPrompt = finalSystemPrompt
     cachedTemperature = temp
     cachedTopK = topK
     cachedTopP = topP
     cachedMaxTokens = maxTokensTotal
 
     gemmaInference.resetConversation(
-        temperature = temp, 
-        maxTokens = maxTokensTotal, 
-        topK = topK, 
-        topP = topP, 
-        systemInstruction = systemPrompt
+        temperature = temp,
+        maxTokens = maxTokensTotal,
+        topK = topK,
+        topP = topP,
+        systemInstruction = finalSystemPrompt
     )
     inferenceSessionId = sessionId
 }
@@ -113,6 +137,19 @@ internal fun ChatViewModel.retriggerInference(text: String, imageUri: String?, a
     inferenceJob = viewModelScope.launch {
         // PERF: Move heavy processing to a background thread to keep UI thread idle for drawing
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+            
+            // 1. Semantic RAG Retrieval (Pre-calculate OUTSIDE the engine lock)
+            // This allows the AI engine to remain free while we do embedding math.
+            val session = repository.getSessionById(sessionId)
+            val fullLtm = session?.longTermMemory ?: ""
+            val relevantLtmFragments = if (fullLtm.isNotEmpty() && text.isNotBlank()) {
+                val chunks = fullLtm.split(Regex("(?<=[.!?])\\s+"))
+                    .filter { it.length > 10 }
+                if (chunks.isNotEmpty()) {
+                    embeddingInference.rankFragments(text, chunks, topK = 5)
+                } else emptyList()
+            } else emptyList()
+
             // CRITICAL: Synchronize with background LTM tasks using the engine-level loadMutex.
             // This prevents background summarization from closing the session mid-inference.
             gemmaInference.loadMutex.withLock {
@@ -126,7 +163,8 @@ internal fun ChatViewModel.retriggerInference(text: String, imageUri: String?, a
                     var success = false
                     while (!success && retryCount <= maxRetries) {
                         try {
-                            prepareInferenceForSession(sessionId, currentMsgId)
+                            // Pass the pre-calculated RAG fragments to avoid redundant work inside the lock
+                            prepareInferenceForSession(sessionId, text, currentMsgId, relevantLtmFragments)
                             val session = repository.getSessionById(sessionId)
                             
                             if (modelStatus.value is ModelStatus.Ready) {

@@ -79,6 +79,18 @@ fun AboutSection(
                         showLicenseDialog = true
                     }
                 )
+                Text(
+                    text = "Gemma Terms",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.clickable {
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        licenseDialogTitle = "Gemma Terms of Use"
+                        licenseDialogText = context.assets.open("GEMMA_TERMS.txt").bufferedReader().use { it.readText() }
+                        showLicenseDialog = true
+                    }
+                )
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
@@ -87,7 +99,7 @@ fun AboutSection(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(text = "Version", style = MaterialTheme.typography.bodySmall)
-                Text(text = "0.7.0.5 (OpenPillyPilly)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
+                Text(text = "0.8.0.0 (Samantabrain)", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
             }
 
             Spacer(modifier = Modifier.height(16.dp))

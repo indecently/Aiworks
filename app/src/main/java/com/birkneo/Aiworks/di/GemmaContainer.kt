@@ -1,6 +1,7 @@
 package com.birkneo.Aiworks.di
 
 import android.content.Context
+import com.birkneo.Aiworks.ai.EmbeddingInference
 import com.birkneo.Aiworks.ai.GemmaInference
 import com.birkneo.Aiworks.data.database.ChatDatabase
 import com.birkneo.Aiworks.data.repository.ChatRepository
@@ -10,10 +11,17 @@ import com.birkneo.Aiworks.util.TtsManager
 
 object GemmaContainer {
     private var gemmaInference: GemmaInference? = null
+    private var embeddingInference: EmbeddingInference? = null
     private var settingsManager: SettingsManager? = null
     private var audioRecorder: AudioRecorder? = null
     private var ttsManager: TtsManager? = null
     private var chatRepository: ChatRepository? = null
+
+    fun getEmbeddingInference(context: Context): EmbeddingInference {
+        return embeddingInference ?: synchronized(this) {
+            embeddingInference ?: EmbeddingInference(context.applicationContext).also { embeddingInference = it }
+        }
+    }
 
     fun getChatRepository(context: Context): ChatRepository {
         return chatRepository ?: synchronized(this) {

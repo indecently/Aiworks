@@ -39,3 +39,7 @@ By: A guy who definitely wasn’t a professional Android dev when this started.
 Engine: LiteRT (TensorFlow Lite).
 
 Current vibe: Shipping fast, breaking things responsibly, and making the most private mobile AI experience on the planet.
+
+## License & Attribution
+- **Application**: Licensed under the [GNU GPLv3](LICENSE).
+- **AI Models**: The Gemma models used in this project are provided by Google and subject to the [Gemma Terms of Use](https://ai.google.dev/gemma/terms).

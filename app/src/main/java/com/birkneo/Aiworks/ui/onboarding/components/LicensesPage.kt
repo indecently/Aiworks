@@ -104,6 +104,19 @@ fun LicensesPage() {
                         showLicenseDialog = true
                     }
                 )
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                LicenseItem(
+                    title = "Gemma Terms of Use",
+                    description = "Licensing terms for the local AI models provided by Google.",
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+                        licenseDialogTitle = "Gemma Terms of Use"
+                        licenseDialogText = context.assets.open("GEMMA_TERMS.txt").bufferedReader().use { it.readText() }
+                        showLicenseDialog = true
+                    }
+                )
             }
         }
     }

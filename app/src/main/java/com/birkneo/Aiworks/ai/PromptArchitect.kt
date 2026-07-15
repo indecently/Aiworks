@@ -24,7 +24,7 @@ object PromptArchitect {
 
     fun constructSystemPrompt(
         session: ChatSession?,
-        longTermMemory: String,
+        relevantLtmFragments: List<String>,
         persona: String,
         recentHistoryText: String
     ): String = buildString {
@@ -36,10 +36,12 @@ object PromptArchitect {
             append(persona)
         }
         
-        // 2. LTM: Historical Context/Facts (Prioritized)
-        if (longTermMemory.isNotEmpty()) {
-            append("\n\nLONG-TERM MEMORY (HISTORICAL CONTEXT & FACTS):\n")
-            append(longTermMemory)
+        // 2. LTM: Historical Context/Facts (Prioritized Retrieval)
+        if (relevantLtmFragments.isNotEmpty()) {
+            append("\n\nRELEVANT HISTORICAL CONTEXT & FACTS:\n")
+            relevantLtmFragments.forEach { fragment ->
+                append("- ").append(fragment).append("\n")
+            }
         }
 
         // 3. Chat History: Recent Tokens (Subject to truncation)

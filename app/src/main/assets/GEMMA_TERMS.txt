@@ -1,0 +1,13 @@
+Gemma Terms of Use
+
+By using, duplicating, distributing, or creating derivative works of the Gemma model and related materials, you agree to the Gemma Terms of Use.
+
+Key Restrictions and Requirements:
+1. Notice Requirement: You must include a "Notice" file in any distribution stating: "Gemma is provided under and subject to the Gemma Terms of Use found at ai.google.dev/gemma".
+2. Use Restrictions: You must comply with the Gemma Prohibited Use Policy, which includes (but is not limited to) not using the model for illegal activities, harmful content generation, or violating the rights of others.
+3. Modification Notices: Any modified files must carry prominent notices stating that changes were made.
+4. Attribution: You must provide a copy of these terms to any third-party recipients of the model.
+5. No Warranty: The model is provided "AS IS" without warranties of any kind.
+
+For the full, authoritative text of the agreement, please visit:
+https://ai.google.dev/gemma/terms

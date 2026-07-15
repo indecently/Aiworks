@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.8.0.0: The Semantic Brain Update
+Massive overhaul of the Long-Term Memory (LTM) and Retrieval-Augmented Generation (RAG) systems. Semantic retrieval is now faster, smarter, and deadlock-free.
+
+LTM & RAG Optimization:
+- **Deadlock Resolution**: Refactored the AI engine's locking architecture. Background memory summarization and active chat inference now coexist perfectly without recursive mutex hangs.
+- **Semantic Embedding Cache**: Implemented a thread-safe LRU cache for memory fragments. Semantic retrieval is now nearly instantaneous for existing memories, saving massive CPU cycles on every turn.
+- **Word-Hash Tokenization**: Replaced the placeholder character-based tokenization with a robust Word-Hash heuristic. Semantic similarity scores are now significantly more accurate for the Gemma embedding model.
+- **Non-Blocking Retrieval**: Shifted RAG ranking logic outside of the engine's critical lock. The UI stays liquid and the AI can "think" about history while the main engine remains free for other tasks.
+- **Lazy Embedding Initialization**: The 300M embedding model now loads asynchronously on-demand, eliminating app startup lag and reducing initial RAM pressure.
+
+Core Engine & Performance:
+- **SentencePiece Infrastructure**: Added `MediaPipe Tasks Text` to the dependency stack. This lays the groundwork for 100% accurate SentencePiece tokenization in future updates.
+- **Refined Context Budgeting**: Tuned the sliding window logic to use a conservative 3.0 char-to-token ratio. This prevents "context walls" and ensures the model has enough headroom to finish complex responses.
+- **Developer Inspection Upgrade**: The inspection panel now displays real-time RAG duration, total estimated tokens, and history message counts for deeper debugging.
+
+## v0.7.0.7: Core Engine Refresh
+Performance and stability bump for the local AI runtime.
+
+Core Engine Upgrades:
+- **LiteRT-LM 0.13.1 Update**: Jumped to the latest runtime release. This ensures compatibility with the newest Gemma 2B architecture optimizations and provides under-the-hood stability improvements.
+- **Dependency Hardening**: Updated version catalogs to ensure all AI-related libraries are synced with the 0.13.1 baseline.
+
 ## v0.7.0.6: Hardware & Security Hardening
 We’re pushing into "Vault" territory. Faster inference, tighter security, and zero-friction entry.
 

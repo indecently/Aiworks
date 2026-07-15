@@ -155,7 +155,7 @@ fun ChatInput(
                     onClick = {
                         view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                         onGalleryClick()
-                    }, 
+                    },
                     enabled = enabled && !isGenerating,
                     modifier = Modifier.size(40.dp)
                 ) {
@@ -251,7 +251,7 @@ fun ChatInput(
                                             onClick = {
                                                 view.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
                                                 onCameraClick()
-                                            }, 
+                                            },
                                             enabled = enabled && !isGenerating
                                         ) {
                                             Icon(AppIcons.Camera, contentDescription = "Camera", tint = MaterialTheme.colorScheme.outline)
