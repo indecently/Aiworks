@@ -1,4 +1,4 @@
-AIworks v0.7.0.6
+AIworks 0.8.0.0 (Samantabrain)
 Because your data deserves better than being Big Tech’s side chick.
 
 License: GNU GPLv3
@@ -15,7 +15,7 @@ Check out the [CHANGELOG.md](CHANGELOG.md) for the full history of improvements 
 Core Features (The Stuff That Actually Slaps)
 1. 100% Offline AI
 
-Running Gemma 4 E2B locally with native audio understanding.
+Running litertlm models locally with native audio and photo understanding.
 
 No internet. No tracking. No “please wait while we consult the mothership.” Just raw, private intelligence in your pocket.
 
@@ -34,11 +34,11 @@ Secure Assistant: Summon the AI from anywhere (yes, even on the lock screen) wit
 Project Status
 Built in: Android Studio on Windows.
 
-By: A guy who definitely wasn’t a professional Android dev when this started.
+By: A guy who definitely wasn’t a professional when this started.
 
 Engine: LiteRT (TensorFlow Lite).
 
-Current vibe: Shipping fast, breaking things responsibly, and making the most private mobile AI experience on the planet.
+Current vibe: Shipping fast, breaking things responsibly, and making the most private mobile AI experience my mind can dream of.
 
 ## License & Attribution
 - **Application**: Licensed under the [GNU GPLv3](LICENSE).
